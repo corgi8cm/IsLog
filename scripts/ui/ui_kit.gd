@@ -77,6 +77,34 @@ static func tool_button(group: ButtonGroup, color: Color) -> Button:
 	return b
 
 
+## 在 host 上開一個置中的對話框。回傳 [遮罩, 內容 VBox]；呼叫 遮罩.queue_free() 關閉。
+static func open_modal(host: Control, title: String) -> Array:
+	var overlay := ColorRect.new()
+	overlay.color = Color(0.1, 0.15, 0.2, 0.45)
+	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	host.add_child(overlay)
+	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var center := CenterContainer.new()
+	overlay.add_child(center)
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var panel := PanelContainer.new()
+	var sb := box(Color.WHITE, 20)
+	sb.set_content_margin_all(24)
+	panel.add_theme_stylebox_override("panel", sb)
+	panel.custom_minimum_size = Vector2(600, 0)
+	center.add_child(panel)
+	var body := VBoxContainer.new()
+	body.add_theme_constant_override("separation", 16)
+	panel.add_child(body)
+	var head := HBoxContainer.new()
+	body.add_child(head)
+	var t := label(title, 32)
+	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(t)
+	head.add_child(button("關閉", overlay.queue_free))
+	return [overlay, body]
+
+
 ## 把元件包進圓角色塊。
 static func chip(content: Control, bg: Color) -> PanelContainer:
 	var p := PanelContainer.new()

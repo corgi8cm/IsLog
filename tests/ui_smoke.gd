@@ -18,6 +18,10 @@ func check(cond: bool, msg: String) -> void:
 
 
 func _run() -> void:
+	# 腳本載入失敗時 await 會卡住，60 秒後強制結束並視為失敗
+	create_timer(60.0).timeout.connect(func():
+		printerr("FAIL UI 測試逾時")
+		quit(1))
 	# headless 預設視窗只有 64×64，改成實際的直式解析度。
 	root.size = Vector2i(720, 1280)
 	var game = root.get_node("Game")
@@ -91,6 +95,23 @@ func _run() -> void:
 		await _frames()
 	check(ev.done_date != "", "兩個子事件完成後母事件自動完成")
 	check(_find(events_page, func(n): return n is Label and n.text.begins_with("✓ 整理房間")) != null, "出現在今天完成")
+
+	# 交換素材視窗
+	for t in Materials.TYPES:
+		game.data.inventory[t] = 0
+	game.data.inventory[Materials.DIRT] = 4
+	main.call("open_exchange", Materials.DIRT)
+	await _frames()
+	var go: Button = _find(main, func(n): return n is Button and n.text == "交換")
+	check(go != null and not go.disabled, "交換按鈕可按")
+	go.pressed.emit()
+	go.pressed.emit()
+	await _frames()
+	check(game.data.inventory[Materials.DIRT] == 0 and game.data.inventory[Materials.WATER] == 2, "4 土換成 2 水")
+	check(go.disabled, "素材不夠時按鈕停用")
+	(_find(main, func(n): return n is Button and n.text == "關閉") as Button).pressed.emit()
+	await _frames()
+	check(_find(main, func(n): return n is Button and n.text == "交換") == null, "關閉視窗")
 
 	_cleanup("user://ui_smoke")
 	quit(1 if _failures > 0 else 0)

@@ -69,6 +69,13 @@ func complete_event(id: int) -> Dictionary:
 	return result
 
 
+func exchange(from_type: String, to_type: String) -> bool:
+	var ok := data.exchange(from_type, to_type)
+	if ok:
+		_commit()
+	return ok
+
+
 func add_subtask(event_id: int, title: String) -> Dictionary:
 	var sub := data.add_subtask(event_id, title)
 	if not sub.is_empty():

@@ -51,9 +51,19 @@ func _build_top_bar() -> Control:
 	row.add_theme_constant_override("separation", 10)
 	panel.add_child(row)
 	for t in Materials.TYPES:
-		var l := UiKit.label("", 26)
-		_counts[t] = l
-		row.add_child(UiKit.chip(l, Materials.top_color(t)))
+		var b := Button.new()
+		b.focus_mode = Control.FOCUS_NONE
+		b.add_theme_font_size_override("font_size", 26)
+		for state in ["normal", "hover", "pressed"]:
+			var chip_sb := UiKit.box(Materials.top_color(t), 12)
+			chip_sb.content_margin_left = 12
+			chip_sb.content_margin_right = 12
+			chip_sb.content_margin_top = 6
+			chip_sb.content_margin_bottom = 6
+			b.add_theme_stylebox_override(state, chip_sb)
+		b.pressed.connect(open_exchange.bind(t))
+		_counts[t] = b
+		row.add_child(b)
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = SIZE_EXPAND_FILL
 	row.add_child(spacer)
@@ -61,6 +71,54 @@ func _build_top_bar() -> Control:
 	_daily.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	row.add_child(_daily)
 	return panel
+
+
+## 素材交換視窗：選要給出的素材和要換到的素材。
+func open_exchange(from_type: String = Materials.DIRT) -> void:
+	var parts := UiKit.open_modal(self, "交換素材")
+	var body: VBoxContainer = parts[1]
+	var state := {"from": from_type, "to": Materials.WATER if from_type != Materials.WATER else Materials.DIRT}
+	var info := UiKit.label("", 26)
+	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	var rows := {}
+	for key in ["from", "to"]:
+		body.add_child(UiKit.label("給出 %d 個" % GameData.EXCHANGE_COST if key == "from" else "換到 1 個", 24))
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		body.add_child(row)
+		var group := ButtonGroup.new()
+		rows[key] = {}
+		for t in Materials.TYPES:
+			var b := UiKit.tool_button(group, Materials.top_color(t))
+			b.custom_minimum_size = Vector2(0, 64)
+			b.button_pressed = state[key] == t
+			b.pressed.connect(func():
+				state[key] = t
+				state.update.call())
+			row.add_child(b)
+			rows[key][t] = b
+	body.add_child(info)
+	var go := UiKit.button("交換", func():
+		if Game.exchange(state.from, state.to):
+			state.update.call())
+	go.custom_minimum_size = Vector2(0, 72)
+	go.add_theme_stylebox_override("normal", UiKit.box(Color("d8f0c8"), 14))
+	body.add_child(go)
+	# lambda 擷取的是區域變數當下的值，所以把 update 放在 state 字典裡讓前面的按鈕也能呼叫
+	state.update = func():
+		for key in rows:
+			for t in rows[key]:
+				rows[key][t].text = "%s %d" % [Materials.display_name(t), Game.data.inventory[t]]
+		var have: int = Game.data.inventory[state.from]
+		if state.from == state.to:
+			info.text = "請選兩種不同的素材"
+		elif have < GameData.EXCHANGE_COST:
+			info.text = "%s只有 %d 個，不夠交換" % [Materials.display_name(state.from), have]
+		else:
+			info.text = "用 %d 個%s換 1 個%s" % [GameData.EXCHANGE_COST,
+				Materials.display_name(state.from), Materials.display_name(state.to)]
+		go.disabled = state.from == state.to or have < GameData.EXCHANGE_COST
+	state.update.call()
 
 
 func _build_tab_bar() -> Control:

@@ -176,6 +176,18 @@ func test_draw_order_back_to_front() -> void:
 	check(Iso.draw_key(Vector2i(2, 2), 0) < Iso.draw_key(Vector2i(2, 2), 1), "同位置低的先畫")
 
 
+func test_exchange_two_for_one() -> void:
+	var g := GameData.new()
+	g.inventory[Materials.DIRT] = 5
+	check(g.exchange(Materials.DIRT, Materials.SAND), "2 土換 1 沙")
+	check(g.inventory[Materials.DIRT] == 3 and g.inventory[Materials.SAND] == 1, "數量正確")
+	check(not g.exchange(Materials.DIRT, Materials.DIRT), "不能換同一種")
+	check(not g.exchange(Materials.WATER, Materials.DIRT), "素材不夠不能換")
+	g.exchange(Materials.DIRT, Materials.STONE)
+	check(not g.exchange(Materials.DIRT, Materials.STONE), "剩 1 個不能換")
+	check(not g.exchange("gold", Materials.DIRT), "不存在的素材")
+
+
 # --- 子事件 -------------------------------------------------------------
 
 func _count(inv: Dictionary) -> int:

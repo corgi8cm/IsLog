@@ -6,6 +6,8 @@ const DAILY_LIMIT := 10
 const REWARD_COUNT := 3
 const SUBTASK_REWARD_COUNT := 2
 const PLANT_DROP_CHANCE := 0.3
+## 素材交換：幾個換 1 個。
+const EXCHANGE_COST := 2
 const SAVE_VERSION := 2
 
 var inventory: Dictionary = Materials.empty_inventory()
@@ -78,6 +80,17 @@ func rewards_left_on(date: String) -> int:
 	if is_pro:
 		return -1
 	return maxi(0, DAILY_LIMIT - completions_on(date))
+
+
+## 素材交換：EXCHANGE_COST 個 from 換 1 個 to。
+func exchange(from_type: String, to_type: String) -> bool:
+	if from_type == to_type or not Materials.is_valid(from_type) or not Materials.is_valid(to_type):
+		return false
+	if int(inventory.get(from_type, 0)) < EXCHANGE_COST:
+		return false
+	inventory[from_type] -= EXCHANGE_COST
+	inventory[to_type] += 1
+	return true
 
 
 # --- 子事件 -------------------------------------------------------------
