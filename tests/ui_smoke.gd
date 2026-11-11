@@ -125,8 +125,64 @@ func _run() -> void:
 	await _frames()
 	check(_find(main, func(n): return n is Button and n.text == "交換") == null, "關閉視窗")
 
+	await _tutorial_walkthrough(game, main)
+
 	_cleanup("user://ui_smoke")
 	quit(1 if _failures > 0 else 0)
+
+
+func _button(node: Node, text: String) -> Button:
+	return _find(node, func(n): return n is Button and n.text == text and n.is_visible_in_tree()) as Button
+
+
+## 新手引導從頭走到尾。
+func _tutorial_walkthrough(game, main: Control) -> void:
+	for c in main.get_children():
+		if c is ColorRect and c.get_child_count() > 0 and c.get_child(0) is CenterContainer:
+			c.queue_free()
+	game.new_game()
+	game.changed.emit()
+	await _frames()
+	var island_page = main.get("_pages")[1]
+	check(island_page.visible and game.current_fade() == 1.0, "引導開始：島嶼頁，灰色的島")
+	check(game.island.block_count() == 1, "天空中一塊方塊")
+	_button(main, "開始").pressed.emit()
+	await _frames()
+	check(main.get("_pages")[0].visible, "進到事件頁")
+	_button(main, "喝一杯水").pressed.emit()
+	await _frames()
+	check(game.data.tutorial_step == Tutorial.Step.COMPLETE, "加入建議的事件")
+	_button(main.get("_pages")[0], "完成").pressed.emit()
+	await _frames()
+	check(game.data.inventory[Materials.DIRT] >= 1 and game.data.plants["flower"] == 1, "保證拿到土和花")
+	check(island_page.visible, "回到島嶼頁放方塊")
+	check(game.place_block(Vector3i(5, 4, 0), Materials.DIRT), "放下方塊")
+	await _frames()
+	check(game.current_fade() == 0.0, "島長出顏色")
+	check(game.plant(Vector3i(4, 4, 0), "flower"), "種下花")
+	await _frames()
+	check(game.data.tutorial_step == Tutorial.Step.VISIT and main.get("_pages")[0].visible, "再完成一件")
+	var ev: Dictionary = game.add_event("伸展一分鐘")
+	game.complete_event(ev.id)
+	await _frames()
+	check(game.island.animals.size() == 1 and game.island.animals[0].species == "sheep", "綿羊來訪")
+	_button(main, "看圖鑑").pressed.emit()
+	await _frames()
+	check(_button(main, "關閉") != null, "打開圖鑑")
+	_button(main, "關閉").pressed.emit()
+	await _frames()
+	check(game.data.tutorial_step == Tutorial.Step.OUTRO and island_page.view.zoom < 1.0, "鏡頭拉遠")
+	_button(main, "開始我的空島").pressed.emit()
+	await _frames()
+	check(game.data.tutorial_step == Tutorial.Step.DONE, "引導完成")
+	check(not (main.get("_tutorial_card") as Control).visible, "引導卡片隱藏")
+
+	game.new_game()
+	game.changed.emit()
+	await _frames()
+	_button(main, "略過引導").pressed.emit()
+	await _frames()
+	check(game.data.tutorial_step == Tutorial.Step.DONE and game.current_fade() == 0.0, "略過引導，島恢復顏色")
 
 
 func _find(node: Node, pred: Callable) -> Node:

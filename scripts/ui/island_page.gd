@@ -277,7 +277,9 @@ func _refresh() -> void:
 func _refresh_status() -> void:
 	var fade := Game.current_fade()
 	var lines := []
-	if fade >= 1.0:
+	if Tutorial.is_active(Game.data.tutorial_step):
+		pass
+	elif fade >= 1.0:
 		lines.append("島褪成灰色了。連續幾天完成事件，顏色會慢慢回來")
 	elif fade > 0.0:
 		lines.append("島正在褪色（%d%%），完成事件讓它恢復顏色" % roundi(fade * 100))

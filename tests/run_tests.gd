@@ -223,6 +223,24 @@ func test_review_dates() -> void:
 	check(Review.label("2026-11-12") == "11 月 12 日（四）", "日期標籤")
 
 
+func test_tutorial_steps_and_save() -> void:
+	var step: int = Tutorial.Step.INTRO
+	check(Tutorial.advance(step, "completed") == step, "不符合的動作不會前進")
+	step = Tutorial.advance(step, "button")
+	check(step == Tutorial.Step.ADD_EVENT, "按開始進到新增事件")
+	for trigger in ["event_added", "completed", "placed", "planted", "completed", "button", "button"]:
+		step = Tutorial.advance(step, trigger)
+	check(step == Tutorial.Step.DONE and not Tutorial.is_active(step), "走完所有步驟")
+	check(Tutorial.advance(step, "button") == Tutorial.Step.DONE, "完成後不再變動")
+	check(GameData.new().tutorial_step == Tutorial.Step.DONE, "預設不跑引導（舊存檔與測試）")
+	var g := GameData.new()
+	g.tutorial_step = Tutorial.Step.PLANT
+	g.tips_shown["daily_cap"] = true
+	var g2 := GameData.from_dict(JSON.parse_string(JSON.stringify(g.to_dict())))
+	check(g2.tutorial_step == Tutorial.Step.PLANT and g2.tips_shown.has("daily_cap"), "引導進度與提示存讀檔")
+	check(GameData.from_dict({}).tutorial_step == Tutorial.Step.DONE, "舊存檔視為已完成引導")
+
+
 func test_exchange_two_for_one() -> void:
 	var g := GameData.new()
 	g.inventory[Materials.DIRT] = 5

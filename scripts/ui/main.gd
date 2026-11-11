@@ -9,6 +9,9 @@ var _pages: Array[Control] = []
 var _tabs: Array[Button] = []
 var _counts := {}
 var _daily: Label
+var _tutorial_card: PanelContainer
+var _tutorial_step := -1
+var _tip_open := false
 
 
 func _ready() -> void:
@@ -25,6 +28,9 @@ func _ready() -> void:
 	add_child(col)
 
 	col.add_child(_build_top_bar())
+	_tutorial_card = PanelContainer.new()
+	_tutorial_card.add_theme_stylebox_override("panel", UiKit.box(Color("fff8e1"), 0))
+	col.add_child(_tutorial_card)
 
 	var content := Control.new()
 	content.size_flags_vertical = SIZE_EXPAND_FILL
@@ -43,8 +49,8 @@ func _ready() -> void:
 		tab_bar.visible = not on)
 
 	Game.changed.connect(_refresh)
-	_refresh()
 	_show_page(0)
+	_refresh()
 
 
 func _build_top_bar() -> Control:
@@ -151,7 +157,78 @@ func _show_page(index: int) -> void:
 			"normal", UiKit.box(Color("dceefc") if selected else Color.WHITE, 14))
 
 
+# --- 新手引導與提示 -------------------------------------------------------
+
+func _refresh_tutorial() -> void:
+	var step := Game.data.tutorial_step
+	_tutorial_card.visible = Tutorial.is_active(step)
+	if step == _tutorial_step:
+		return
+	_tutorial_step = step
+	for c in _tutorial_card.get_children():
+		c.queue_free()
+	if not Tutorial.is_active(step):
+		var island_page = _pages[1]
+		island_page.view.reset_view()
+		return
+	var info := Tutorial.info(step)
+	_show_page(info.page)
+	if step == Tutorial.Step.OUTRO:
+		_pages[1].view.zoom = 0.62
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 10)
+	_tutorial_card.add_child(col)
+	var text := UiKit.label(info.text, 27)
+	text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	col.add_child(text)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	col.add_child(row)
+	if step == Tutorial.Step.ADD_EVENT:
+		for title in Tutorial.SUGGESTIONS:
+			row.add_child(UiKit.button(title, func(): Game.add_event(title)))
+	if info.button != "":
+		var b := UiKit.button(info.button, _on_tutorial_button)
+		b.add_theme_stylebox_override("normal", UiKit.box(Color("d8f0c8"), 14))
+		row.add_child(b)
+	var spacer := Control.new()
+	spacer.size_flags_horizontal = SIZE_EXPAND_FILL
+	row.add_child(spacer)
+	if step != Tutorial.Step.OUTRO:
+		var skip := UiKit.button("略過引導", Game.skip_tutorial)
+		skip.add_theme_font_size_override("font_size", 22)
+		skip.add_theme_stylebox_override("normal", UiKit.box(Color(1, 1, 1, 0.6), 12))
+		row.add_child(skip)
+
+
+func _on_tutorial_button() -> void:
+	if Game.data.tutorial_step == Tutorial.Step.MEET:
+		Encyclopedia.open(self)
+	Game.tutorial_button()
+
+
+func _check_tip() -> void:
+	if _tip_open:
+		return
+	var key := Game.pending_tip()
+	if key == "":
+		return
+	_tip_open = true
+	Game.dismiss_tip(key)
+	var parts := UiKit.open_modal(self, "小提示")
+	var body: VBoxContainer = parts[1]
+	var l := UiKit.label(Game.TIP_TEXTS[key], 27)
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.custom_minimum_size = Vector2(540, 0)
+	body.add_child(l)
+	var ok := UiKit.button("知道了", parts[0].queue_free)
+	body.add_child(ok)
+	parts[0].tree_exited.connect(func(): _tip_open = false)
+
+
 func _refresh() -> void:
+	_refresh_tutorial()
+	_check_tip.call_deferred()
 	for t in Materials.TYPES:
 		_counts[t].text = "%s %d" % [Materials.display_name(t), Game.data.inventory.get(t, 0)]
 	var today := Game.today()

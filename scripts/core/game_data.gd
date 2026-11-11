@@ -26,6 +26,10 @@ var total_completed := 0
 var is_pro := false
 ## 圖鑑：來過的動物 → 第一次來訪的日期。
 var seen_animals: Dictionary = {}
+## 新手引導進度；預設為已完成，只有全新開始的遊戲會從頭開始。
+var tutorial_step: int = Tutorial.Step.DONE
+## 已經顯示過的情境提示（第一次達到每日上限、第一次褪色……）。
+var tips_shown: Dictionary = {}
 
 
 func add_event(title: String, now_unix: int, subtask_titles: Array = []) -> Dictionary:
@@ -247,6 +251,8 @@ func to_dict() -> Dictionary:
 		"total_completed": total_completed,
 		"is_pro": is_pro,
 		"seen_animals": seen_animals.duplicate(),
+		"tutorial_step": tutorial_step,
+		"tips_shown": tips_shown.duplicate(),
 	}
 
 
@@ -307,4 +313,9 @@ static func from_dict(d: Dictionary) -> GameData:
 		for species in seen:
 			if Catalog.is_animal(str(species)):
 				g.seen_animals[str(species)] = str(seen[species])
+	g.tutorial_step = clampi(int(d.get("tutorial_step", Tutorial.Step.DONE)), 0, Tutorial.Step.DONE)
+	var tips = d.get("tips_shown", {})
+	if typeof(tips) == TYPE_DICTIONARY:
+		for k in tips:
+			g.tips_shown[str(k)] = true
 	return g

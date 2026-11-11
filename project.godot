@@ -12,7 +12,7 @@ config_version=5
 
 config/name="空島事記"
 config/description="完成生活小事，蓋出屬於自己的空中花園島。"
-config/version="0.2.1"
+config/version="0.3.0"
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 

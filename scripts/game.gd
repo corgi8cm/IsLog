@@ -57,6 +57,7 @@ func now() -> int:
 func add_event(title: String, subtask_titles: Array = []) -> Dictionary:
 	var ev := data.add_event(title, now(), subtask_titles)
 	if not ev.is_empty():
+		_tutorial("event_added")
 		_commit()
 	return ev
 
@@ -66,7 +67,9 @@ func complete_event(id: int) -> Dictionary:
 	var result := data.complete_event(id, today(), now(), rng)
 	if not result.ok:
 		return result
+	_tutorial_rewards(id, result)
 	result.visitor = _after_completion(id)
+	_tutorial("completed")
 	_commit()
 	return result
 
@@ -98,7 +101,10 @@ func complete_subtask(event_id: int, sub_id: int) -> Dictionary:
 	if not result.ok:
 		return result
 	var parent_done: bool = not result.parent.is_empty()
+	if parent_done:
+		_tutorial_rewards(event_id, result.parent)
 	result.visitor = _after_completion(event_id if parent_done else -1)
+	_tutorial("completed")
 	_commit()
 	return result
 
@@ -108,7 +114,17 @@ func _after_completion(event_id: int) -> String:
 	island.care(today())
 	var fade := current_fade()
 	island.update_animals(fade, now())
-	var visitor := island.try_visit(fade, now(), rng, data.seen_animals)
+	var seen := data.seen_animals
+	if data.tutorial_step == Tutorial.Step.VISIT:
+		# 引導中：讓綿羊來（把其他動物都當作來過，綿羊就會優先）
+		seen = {}
+		for species in Catalog.animal_ids():
+			if species != "sheep":
+				seen[species] = true
+	var visitor := ""
+	# 引導期間只有「再完成一件小事」那一步會有客人
+	if not Tutorial.is_active(data.tutorial_step) or data.tutorial_step == Tutorial.Step.VISIT:
+		visitor = island.try_visit(fade, now(), rng, seen)
 	if visitor != "":
 		result_first_visit = not data.seen_animals.has(visitor)
 		if result_first_visit:
@@ -130,6 +146,11 @@ func delete_event(id: int) -> bool:
 func place_block(p: Vector3i, type: String) -> bool:
 	var ok := island.place(p, type, data.inventory)
 	if ok:
+		if data.tutorial_step == Tutorial.Step.PLACE:
+			# 引導：放下第一個方塊，灰色的島長出顏色
+			island.fade_base = 0.0
+			island.last_care_date = today()
+		_tutorial("placed")
 		_island_changed()
 	return ok
 
@@ -144,6 +165,7 @@ func remove_block(p: Vector3i) -> String:
 func plant(p: Vector3i, plant_id: String) -> bool:
 	var ok := island.plant(p, plant_id, data.plants)
 	if ok:
+		_tutorial("planted")
 		_island_changed()
 	return ok
 
@@ -181,6 +203,83 @@ func _island_changed() -> void:
 	_commit()
 
 
+# --- 新手引導 -------------------------------------------------------------
+
+## 全新開始：天空中一塊灰色的土方塊，從引導第一步開始。
+func new_game() -> void:
+	data = GameData.new()
+	data.tutorial_step = Tutorial.Step.INTRO
+	island = IslandData.new()
+	island.blocks[Vector3i(4, 4, 0)] = Materials.DIRT
+	island.fade_base = 1.0
+
+
+## 卡片上的按鈕（開始、看圖鑑、開始我的空島）。
+func tutorial_button() -> void:
+	if _tutorial("button"):
+		_commit()
+
+
+func skip_tutorial() -> void:
+	data.tutorial_step = Tutorial.Step.DONE
+	if island.last_care_date == "":
+		island.fade_base = 0.0
+	_commit()
+
+
+func _tutorial(trigger: String) -> bool:
+	var next := Tutorial.advance(data.tutorial_step, trigger)
+	if next == data.tutorial_step:
+		return false
+	data.tutorial_step = next
+	return true
+
+
+## 引導中第一次完成事件：保證拿到土（才能放方塊）和一株花（種在土上）。
+func _tutorial_rewards(event_id: int, result: Dictionary) -> void:
+	if data.tutorial_step != Tutorial.Step.COMPLETE or result.rewards.is_empty():
+		return
+	var ev := data.find_event(event_id)
+	if not result.rewards.has(Materials.DIRT):
+		data.inventory[result.rewards[0]] -= 1
+		data.inventory[Materials.DIRT] += 1
+		result.rewards[0] = Materials.DIRT
+	if result.plant != "flower":
+		if result.plant != "":
+			data.plants[result.plant] -= 1
+		data.plants["flower"] += 1
+		result.plant = "flower"
+	ev.rewards = result.rewards
+	ev.plant = result.plant
+
+
+const TIP_TEXTS := {
+	"daily_cap": "今天的 10 件素材都拿到了。之後還是可以完成事件，只是不會給素材，明天再來吧！",
+	"first_fade": "島開始褪色了。整天沒完成事件超過一天，島就會慢慢變灰，動物也會離開；每天完成一件小事，顏色就會回來。",
+	"near_100": "快要完成 100 件事件了！累積 100 件會解鎖一座新的島（之後的版本開放）。",
+}
+
+
+## 情境提示：第一次發生時顯示一次。回傳提示的代號，沒有則回傳空字串。
+func pending_tip() -> String:
+	if Tutorial.is_active(data.tutorial_step):
+		return ""
+	var conditions := {
+		"daily_cap": not data.is_pro and data.completions_on(today()) >= GameData.DAILY_LIMIT,
+		"first_fade": current_fade() > 0.0,
+		"near_100": data.total_completed >= 90,
+	}
+	for key in conditions:
+		if conditions[key] and not data.tips_shown.has(key):
+			return key
+	return ""
+
+
+func dismiss_tip(key: String) -> void:
+	data.tips_shown[key] = true
+	save_game()
+
+
 # --- 存檔 ---------------------------------------------------------------
 
 func _commit() -> void:
@@ -203,6 +302,10 @@ func save_game() -> void:
 
 
 func load_game() -> void:
+	if not FileAccess.file_exists(_save_path()) and not FileAccess.file_exists(_save_path() + ".tmp"):
+		new_game()
+		changed.emit()
+		return
 	var d := _read_json(_save_path())
 	data = GameData.from_dict(d) if not d.is_empty() else GameData.new()
 	var i := _read_json(_island_path(0))
