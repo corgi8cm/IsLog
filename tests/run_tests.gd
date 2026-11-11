@@ -278,8 +278,8 @@ func test_recovery_takes_three_days_and_pauses() -> void:
 
 
 func test_fade_reduces_animal_capacity() -> void:
-	check(IslandData.animal_capacity(0.0) == 4, "全彩可住 4 隻")
-	check(IslandData.animal_capacity(0.5) == 2, "褪一半剩 2 隻")
+	check(IslandData.animal_capacity(0.0) == 8, "全彩可住 8 隻（4 種各 2 隻）")
+	check(IslandData.animal_capacity(0.5) == 4, "褪一半剩 4 隻")
 	check(IslandData.animal_capacity(1.0) == 0, "全灰全部離開")
 
 
@@ -301,9 +301,12 @@ func test_animals_need_habitat_and_come_one_at_a_time() -> void:
 	var first := island.try_visit(0.0, 0, _rng())
 	check(first == "sheep" or first == "fish", "有土或水才有綿羊或小魚")
 	check(island.animals.size() == 1, "一次只來一隻")
-	var second := island.try_visit(0.0, 0, _rng())
-	check(second != first and second != "", "第二次來另一種")
+	for i in 3:
+		check(island.try_visit(0.0, 0, _rng(i)) != "", "第 %d 次也有動物來" % (i + 2))
+	check(island.species_count("sheep") == 2 and island.species_count("fish") == 2, "同一種最多 2 隻")
 	check(island.try_visit(0.0, 0, _rng()) == "", "沒有石頭和沙，蜥蜴和寄居蟹不會來")
+	var sheep := island.animals.filter(func(a): return a.species == "sheep")
+	check(sheep[0].pos != sheep[1].pos, "有空位時兩隻綿羊不站同一格")
 	for a in island.animals:
 		check(island.is_habitat(a.species, a.pos), "動物站在自己的棲地上")
 
@@ -311,11 +314,11 @@ func test_animals_need_habitat_and_come_one_at_a_time() -> void:
 func test_animal_capacity_limits_visits_and_removes_extra() -> void:
 	var island := _island_with({Vector3i(0, 0, 0): Materials.DIRT, Vector3i(1, 0, 0): Materials.WATER,
 		Vector3i(2, 0, 0): Materials.STONE, Vector3i(3, 0, 0): Materials.SAND})
-	for i in 4:
+	for i in 10:
 		island.try_visit(0.0, 0, _rng(i))
-	check(island.animals.size() == 4, "四種都來了")
+	check(island.animals.size() == 8, "四種各來兩隻")
 	check(island.update_animals(0.5, 0), "褪色時有動物離開")
-	check(island.animals.size() == 2, "褪一半剩 2 隻")
+	check(island.animals.size() == 4, "褪一半剩 4 隻")
 	check(island.try_visit(0.5, 0, _rng()) == "", "容量滿了不會再來")
 	island.update_animals(1.0, 0)
 	check(island.animals.is_empty(), "全灰時動物全部離開")

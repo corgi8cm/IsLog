@@ -13,6 +13,8 @@ const FADE_PER_DAY := 0.25
 const RECOVER_PER_DAY := 1.0 / 3.0
 ## 動物的棲地消失後，冒問號多久才離開（秒）。
 const CONFUSED_LEAVE_SECONDS := 86400
+## 同一種動物最多幾隻。
+const MAX_PER_SPECIES := 2
 
 const NEIGHBORS := [
 	Vector2i(-1, -1), Vector2i(0, -1), Vector2i(1, -1),
@@ -174,16 +176,17 @@ func is_habitat(species: String, p: Vector3i) -> bool:
 	return blocks.get(p, "") == Catalog.animal_habitat(species) and is_top_open(p)
 
 
-func has_species(species: String) -> bool:
+func species_count(species: String) -> int:
+	var n := 0
 	for a in animals:
 		if a.species == species:
-			return true
-	return false
+			n += 1
+	return n
 
 
 ## 褪色時島上能住的動物數量：顏色越少，動物越少。
 static func animal_capacity(fade: float) -> int:
-	return roundi(Catalog.animal_ids().size() * (1.0 - fade))
+	return roundi(Catalog.animal_ids().size() * MAX_PER_SPECIES * (1.0 - fade))
 
 
 ## 完成事件時呼叫：條件滿足的動物來訪，一次一隻。回傳來訪的物種，沒有則回傳空字串。
@@ -192,13 +195,17 @@ func try_visit(fade: float, now_unix: int, rng: RandomNumberGenerator) -> String
 		return ""
 	var candidates := []
 	for species in Catalog.animal_ids():
-		if not has_species(species) and not habitat_cells(species).is_empty():
+		if species_count(species) < MAX_PER_SPECIES and not habitat_cells(species).is_empty():
 			candidates.append(species)
 	if candidates.is_empty():
 		return ""
 	var species: String = candidates[rng.randi_range(0, candidates.size() - 1)]
 	var cells := habitat_cells(species)
 	cells.sort()
+	# 盡量站在沒有其他動物的格子
+	var free := cells.filter(func(c): return not _animal_at(c, -1))
+	if not free.is_empty():
+		cells = free
 	animals.append({
 		"id": next_animal_id,
 		"species": species,
