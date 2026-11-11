@@ -3,6 +3,7 @@ extends Control
 
 const EventsPage := preload("res://scripts/ui/events_page.gd")
 const IslandPage := preload("res://scripts/ui/island_page.gd")
+const ReviewPage := preload("res://scripts/ui/review_page.gd")
 
 var _pages: Array[Control] = []
 var _tabs: Array[Button] = []
@@ -29,7 +30,7 @@ func _ready() -> void:
 	content.size_flags_vertical = SIZE_EXPAND_FILL
 	content.clip_contents = true
 	col.add_child(content)
-	for page in [EventsPage.new(), IslandPage.new()]:
+	for page in [EventsPage.new(), IslandPage.new(), ReviewPage.new()]:
 		page.set_anchors_preset(PRESET_FULL_RECT)
 		content.add_child(page)
 		_pages.append(page)
@@ -127,7 +128,7 @@ func _build_tab_bar() -> Control:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 12)
 	panel.add_child(row)
-	var names := ["事件", "島嶼"]
+	var names := ["事件", "島嶼", "回顧"]
 	for i in names.size():
 		var b := UiKit.button(names[i], _show_page.bind(i))
 		b.size_flags_horizontal = SIZE_EXPAND_FILL

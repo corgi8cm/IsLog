@@ -47,6 +47,18 @@ static func side_color(type: String) -> Color:
 	return _side_colors.get(type, Color.MAGENTA)
 
 
+## 素材清單 → 「土×2、水、石」。
+static func summary(rewards: Array, empty_text: String = "沒有素材") -> String:
+	if rewards.is_empty():
+		return empty_text
+	var parts := []
+	for t in TYPES:
+		var n := rewards.count(t)
+		if n > 0:
+			parts.append(display_name(t) + ("×%d" % n if n > 1 else ""))
+	return "、".join(parts)
+
+
 static func empty_inventory() -> Dictionary:
 	var inv := {}
 	for t in TYPES:

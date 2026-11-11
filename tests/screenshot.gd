@@ -17,6 +17,11 @@ func _run() -> void:
 		game.add_event(title)
 	for i in 2:
 		game.complete_event(game.data.events[i].id)
+	for back in [1, 2, 3, 5, 6, 9]:
+		var date := IslandData.days_ago(game.today(), back)
+		for k in (back % 3) + 1:
+			var ev: Dictionary = game.data.add_event(["散步十分鐘", "喝一杯水", "伸展一分鐘"][k], 0)
+			game.data.complete_event(ev.id, date, 0, game.rng)
 	var room: Dictionary = game.add_event("整理房間", ["收衣服", "擦桌子", "倒垃圾"])
 	game.complete_subtask(room.id, room.subtasks[0].id)
 	var book: Dictionary = game.add_event("讀完一本書", ["第一章", "第二章"])
@@ -65,6 +70,11 @@ func _run() -> void:
 	game.tick()
 	page.view.zoom = 1.0
 	await _shot(out_dir, "island_faded.png")
+	main.call("_show_page", 2)
+	await _shot(out_dir, "review.png")
+	var review = main.get("_pages")[2]
+	review.call("_set_mode", 1)
+	await _shot(out_dir, "review_timeline.png")
 	_remove_dir("user://screenshot_demo")
 	quit()
 

@@ -87,7 +87,7 @@ func _complete_sub(event_id: int, sub_id: int) -> void:
 	if result.capped:
 		lines.append("今天的素材已經拿滿 %d 件了" % GameData.DAILY_LIMIT)
 	else:
-		lines.append("子事件完成：" + _reward_summary(result.rewards))
+		lines.append("子事件完成：" + Materials.summary(result.rewards))
 	if not result.parent.is_empty():
 		lines.append("全部完成！" + _event_reward_line(result.parent))
 	_toast_result(lines, result)
@@ -96,7 +96,7 @@ func _complete_sub(event_id: int, sub_id: int) -> void:
 func _event_reward_line(result: Dictionary) -> String:
 	if result.capped:
 		return "今天的素材已經拿滿 %d 件了，明天再來！" % GameData.DAILY_LIMIT
-	var text := "獲得素材：" + _reward_summary(result.rewards)
+	var text := "獲得素材：" + Materials.summary(result.rewards)
 	if result.get("bonus", 0) > 0:
 		text += "（子事件加成 +%d）" % result.bonus
 	if result.plant != "":
@@ -110,18 +110,6 @@ func _toast_result(lines: Array, result: Dictionary) -> void:
 	var capped: bool = result.capped and result.get("parent", {}).get("capped", true)
 	_show_toast("
 ".join(lines), Color("b07a2a") if capped else Color("4f8a34"))
-
-
-## 素材清單 → 「土×2、水、石」
-static func _reward_summary(rewards: Array) -> String:
-	if rewards.is_empty():
-		return "沒有素材"
-	var parts := []
-	for t in Materials.TYPES:
-		var n := rewards.count(t)
-		if n > 0:
-			parts.append(Materials.display_name(t) + ("×%d" % n if n > 1 else ""))
-	return "、".join(parts)
 
 
 func _redo(ev: Dictionary) -> void:
@@ -240,7 +228,7 @@ func _subtask_row(ev: Dictionary, sub: Dictionary) -> Control:
 		row.add_child(_title_label(sub.title, UiKit.TEXT_COLOR, 26))
 	else:
 		row.add_child(_title_label("✓ " + sub.title, DONE_COLOR, 26))
-		var r := UiKit.label(_reward_summary(sub.rewards), 22)
+		var r := UiKit.label(Materials.summary(sub.rewards), 22)
 		r.add_theme_color_override("font_color", DONE_COLOR)
 		row.add_child(r)
 	row.add_child(_small_button("刪除", Color("f6f0f0"), Game.delete_subtask.bind(ev.id, sub.id)))
@@ -276,7 +264,7 @@ func _done_row(ev: Dictionary) -> Control:
 	if progress.y > 0:
 		title += "（子事件 %d）" % progress.y
 	row.add_child(_title_label(title, DONE_COLOR))
-	var reward_text := _reward_summary(ev.rewards)
+	var reward_text := Materials.summary(ev.rewards)
 	if ev.plant != "":
 		reward_text += "＋" + Catalog.plant_name(ev.plant)
 	var r := UiKit.label(reward_text, 22)

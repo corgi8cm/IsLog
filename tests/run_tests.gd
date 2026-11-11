@@ -176,6 +176,53 @@ func test_draw_order_back_to_front() -> void:
 	check(Iso.draw_key(Vector2i(2, 2), 0) < Iso.draw_key(Vector2i(2, 2), 1), "同位置低的先畫")
 
 
+# --- 事件回顧 -------------------------------------------------------------
+
+func test_review_entries_and_counts() -> void:
+	var g := GameData.new()
+	var rng := _rng()
+	var a := g.add_event("喝水", 10)
+	g.complete_event(a.id, "2026-11-10", 100, rng)
+	var p := g.add_event("整理房間", 10, ["收衣服", "擦桌子"])
+	g.complete_subtask(p.id, p.subtasks[0].id, "2026-11-10", 200, rng)
+	g.complete_subtask(p.id, p.subtasks[1].id, "2026-11-11", 300, rng)
+	var e10 := Review.entries_on(g, "2026-11-10")
+	check(e10.size() == 2, "11/10：喝水 + 子事件收衣服")
+	check(e10[0].kind == "subtask" and e10[0].title == "收衣服", "較晚完成的排前面")
+	var e11 := Review.entries_on(g, "2026-11-11")
+	check(e11.size() == 1 and e11[0].kind == "event", "11/11：母事件自動完成，同天完成的子事件併在母事件裡")
+	var counts := Review.counts_by_date(g)
+	check(counts["2026-11-10"] == 2 and counts["2026-11-11"] == 2, "每天件數含子事件")
+	check(Review.active_dates(g) == ["2026-11-11", "2026-11-10"], "日期新的在前")
+
+
+func test_review_streak() -> void:
+	var g := GameData.new()
+	var rng := _rng()
+	for d in ["2026-11-05", "2026-11-07", "2026-11-08", "2026-11-09"]:
+		g.complete_event(g.add_event("x", 0).id, d, 0, rng)
+	check(Review.streak(g, "2026-11-09") == 3, "今天有完成：連續 3 天")
+	check(Review.streak(g, "2026-11-10") == 3, "今天還沒完成：從昨天算起")
+	check(Review.streak(g, "2026-11-11") == 0, "斷掉了")
+
+
+func test_review_top_titles() -> void:
+	var g := GameData.new()
+	var rng := _rng()
+	for t in ["喝水", "散步", "喝水", "讀書", "喝水", "散步"]:
+		g.complete_event(g.add_event(t, 0).id, "2026-11-10", 0, rng)
+	g.add_event("喝水", 0)
+	var top := Review.top_titles(g, 2)
+	check(top == [["喝水", 3], ["散步", 2]], "最常做的事（未完成的不算）")
+
+
+func test_review_dates() -> void:
+	check(Review.days_in_month(2026, 2) == 28 and Review.days_in_month(2028, 2) == 29, "二月天數")
+	check(Review.days_in_month(2026, 12) == 31, "十二月天數")
+	check(Review.weekday("2026-11-12") == 4, "2026-11-12 是星期四")
+	check(Review.label("2026-11-12") == "11 月 12 日（四）", "日期標籤")
+
+
 func test_exchange_two_for_one() -> void:
 	var g := GameData.new()
 	g.inventory[Materials.DIRT] = 5
