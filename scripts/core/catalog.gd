@@ -18,12 +18,25 @@ const PLANTS := {
 	"palm": {"name": "椰子樹", "base": Materials.SAND},
 }
 
-## 基本動物（無條件）：住在哪一種方塊上。
+## 動物：住在哪一種方塊上，以及棲地條件（「附近」= 周圍 8 格、高度差一層以內）。
+## condition：[種類, 參數]；空陣列為無條件的基本動物。hint：圖鑑上的提示。
 const ANIMALS := {
-	"sheep": {"name": "綿羊", "habitat": Materials.DIRT},
-	"fish": {"name": "小魚", "habitat": Materials.WATER},
-	"lizard": {"name": "蜥蜴", "habitat": Materials.STONE},
-	"hermit_crab": {"name": "寄居蟹", "habitat": Materials.SAND},
+	"sheep": {"name": "綿羊", "habitat": Materials.DIRT, "condition": [], "hint": ""},
+	"rabbit": {"name": "兔子", "habitat": Materials.DIRT,
+		"condition": ["near_plant", "shrub"], "hint": "附近有灌木"},
+	"corgi": {"name": "柯基", "habitat": Materials.DIRT,
+		"condition": ["grassland", 5], "hint": "附近有一片草地（至少 5 格露天的土）"},
+	"fish": {"name": "小魚", "habitat": Materials.WATER, "condition": [], "hint": ""},
+	"turtle": {"name": "烏龜", "habitat": Materials.WATER,
+		"condition": ["near_block", Materials.SAND], "hint": "附近有沙"},
+	"duck": {"name": "鴨子", "habitat": Materials.WATER,
+		"condition": ["near_block", Materials.DIRT], "hint": "附近有土"},
+	"lizard": {"name": "蜥蜴", "habitat": Materials.STONE, "condition": [], "hint": ""},
+	"goat": {"name": "山羊", "habitat": Materials.STONE,
+		"condition": ["stone_stack", 3], "hint": "附近的石頭疊到 3 層"},
+	"hermit_crab": {"name": "寄居蟹", "habitat": Materials.SAND, "condition": [], "hint": ""},
+	"crab": {"name": "螃蟹", "habitat": Materials.SAND,
+		"condition": ["near_block", Materials.WATER], "hint": "附近有水"},
 }
 
 
@@ -57,6 +70,24 @@ static func animal_name(id: String) -> String:
 
 static func animal_habitat(id: String) -> String:
 	return ANIMALS[id].habitat if ANIMALS.has(id) else ""
+
+
+static func animal_condition(id: String) -> Array:
+	return ANIMALS[id].condition if ANIMALS.has(id) else []
+
+
+static func is_basic_animal(id: String) -> bool:
+	return animal_condition(id).is_empty()
+
+
+## 圖鑑提示：「住在土上，附近有灌木」。
+static func animal_hint(id: String) -> String:
+	if not ANIMALS.has(id):
+		return ""
+	var text := "住在%s上" % Materials.display_name(animal_habitat(id))
+	if ANIMALS[id].hint != "":
+		text += "，" + ANIMALS[id].hint
+	return text
 
 
 static func empty_plant_inventory() -> Dictionary:

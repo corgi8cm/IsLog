@@ -24,6 +24,8 @@ var daily_count := 0
 var daily_main_count := 0
 var total_completed := 0
 var is_pro := false
+## 圖鑑：來過的動物 → 第一次來訪的日期。
+var seen_animals: Dictionary = {}
 
 
 func add_event(title: String, now_unix: int, subtask_titles: Array = []) -> Dictionary:
@@ -244,6 +246,7 @@ func to_dict() -> Dictionary:
 		"daily_main_count": daily_main_count,
 		"total_completed": total_completed,
 		"is_pro": is_pro,
+		"seen_animals": seen_animals.duplicate(),
 	}
 
 
@@ -299,4 +302,9 @@ static func from_dict(d: Dictionary) -> GameData:
 	g.daily_main_count = int(d.get("daily_main_count", g.daily_count))
 	g.total_completed = int(d.get("total_completed", 0))
 	g.is_pro = bool(d.get("is_pro", false))
+	var seen = d.get("seen_animals", {})
+	if typeof(seen) == TYPE_DICTIONARY:
+		for species in seen:
+			if Catalog.is_animal(str(species)):
+				g.seen_animals[str(species)] = str(seen[species])
 	return g

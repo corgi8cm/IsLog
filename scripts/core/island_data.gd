@@ -162,18 +162,65 @@ func care(today: String) -> void:
 
 # --- 動物 ---------------------------------------------------------------
 
-## 某種動物可以站的方塊：棲地種類、頂面露出。
+## 「附近」：周圍 8 格、高度差一層以內。
+static func nearby_cells(p: Vector3i) -> Array:
+	var cells := []
+	for d in NEIGHBORS:
+		for dz in [-1, 0, 1]:
+			cells.append(p + Vector3i(d.x, d.y, dz))
+	return cells
+
+
+## 動物的棲地條件在 p 是否成立。
+func condition_met(species: String, p: Vector3i) -> bool:
+	var cond := Catalog.animal_condition(species)
+	if cond.is_empty():
+		return true
+	match cond[0]:
+		"near_block":
+			for q in nearby_cells(p):
+				if blocks.get(q, "") == cond[1]:
+					return true
+			return false
+		"near_plant":
+			for q in nearby_cells(p):
+				if plants.get(q, "") == cond[1]:
+					return true
+			return false
+		"grassland":
+			var n := 0
+			for q in nearby_cells(p):
+				if blocks.get(q, "") == Materials.DIRT and is_top_open(q):
+					n += 1
+			return n >= int(cond[1])
+		"stone_stack":
+			# 周圍（含自己這一欄）有一欄石頭連續疊到 cond[1] 層
+			for dx in [-1, 0, 1]:
+				for dy in [-1, 0, 1]:
+					var run := 0
+					for z in SIZE:
+						if blocks.get(Vector3i(p.x + dx, p.y + dy, z), "") == Materials.STONE:
+							run += 1
+							if run >= int(cond[1]):
+								return true
+						else:
+							run = 0
+			return false
+	return false
+
+
+## 某種動物可以站的方塊：棲地種類、頂面露出、棲地條件成立。
 func habitat_cells(species: String) -> Array:
 	var habitat := Catalog.animal_habitat(species)
 	var cells := []
 	for p in blocks:
-		if blocks[p] == habitat and is_top_open(p):
+		if blocks[p] == habitat and is_top_open(p) and condition_met(species, p):
 			cells.append(p)
 	return cells
 
 
 func is_habitat(species: String, p: Vector3i) -> bool:
-	return blocks.get(p, "") == Catalog.animal_habitat(species) and is_top_open(p)
+	return blocks.get(p, "") == Catalog.animal_habitat(species) and is_top_open(p) 		and condition_met(species, p)
 
 
 func species_count(species: String) -> int:
@@ -190,7 +237,8 @@ static func animal_capacity(fade: float) -> int:
 
 
 ## 完成事件時呼叫：條件滿足的動物來訪，一次一隻。回傳來訪的物種，沒有則回傳空字串。
-func try_visit(fade: float, now_unix: int, rng: RandomNumberGenerator) -> String:
+## seen：圖鑑裡已經來過的物種；有還沒來過的候選時優先讓牠來。
+func try_visit(fade: float, now_unix: int, rng: RandomNumberGenerator, seen: Dictionary = {}) -> String:
 	if animals.size() >= animal_capacity(fade):
 		return ""
 	var candidates := []
@@ -199,6 +247,9 @@ func try_visit(fade: float, now_unix: int, rng: RandomNumberGenerator) -> String
 			candidates.append(species)
 	if candidates.is_empty():
 		return ""
+	var unseen := candidates.filter(func(s): return not seen.has(s))
+	if not unseen.is_empty():
+		candidates = unseen
 	var species: String = candidates[rng.randi_range(0, candidates.size() - 1)]
 	var cells := habitat_cells(species)
 	cells.sort()

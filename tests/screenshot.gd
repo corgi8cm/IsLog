@@ -48,8 +48,10 @@ func _run() -> void:
 	for p in planting:
 		game.data.plants[planting[p]] += 1
 		game.plant(p, planting[p])
-	for i in 4:
-		game.island.try_visit(0.0, game.now(), game.rng)
+	for i in 9:
+		var v: String = game.island.try_visit(0.0, game.now(), game.rng, game.data.seen_animals)
+		if v != "":
+			game.data.seen_animals[v] = game.today()
 
 	var main: Control = load("res://scenes/main.tscn").instantiate()
 	root.add_child(main)
@@ -70,6 +72,13 @@ func _run() -> void:
 	game.tick()
 	page.view.zoom = 1.0
 	await _shot(out_dir, "island_faded.png")
+	# 從島嶼頁的「圖鑑」按鈕開啟（-s 腳本不能直接引用用到 Autoload 的類別）
+	main.call("_show_page", 1)
+	for b in main.find_children("*", "Button", true, false):
+		if b.text == "圖鑑":
+			b.pressed.emit()
+	await _shot(out_dir, "encyclopedia.png")
+	main.get_child(-1).queue_free()
 	main.call("_show_page", 2)
 	await _shot(out_dir, "review.png")
 	var review = main.get("_pages")[2]

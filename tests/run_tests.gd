@@ -448,8 +448,8 @@ func test_recovery_takes_three_days_and_pauses() -> void:
 
 
 func test_fade_reduces_animal_capacity() -> void:
-	check(IslandData.animal_capacity(0.0) == 8, "全彩可住 8 隻（4 種各 2 隻）")
-	check(IslandData.animal_capacity(0.5) == 4, "褪一半剩 4 隻")
+	check(IslandData.animal_capacity(0.0) == 20, "全彩可住 20 隻（10 種各 2 隻）")
+	check(IslandData.animal_capacity(0.5) == 10, "褪一半剩 10 隻")
 	check(IslandData.animal_capacity(1.0) == 0, "全灰全部離開")
 
 
@@ -482,14 +482,15 @@ func test_animals_need_habitat_and_come_one_at_a_time() -> void:
 
 
 func test_animal_capacity_limits_visits_and_removes_extra() -> void:
-	var island := _island_with({Vector3i(0, 0, 0): Materials.DIRT, Vector3i(1, 0, 0): Materials.WATER,
-		Vector3i(2, 0, 0): Materials.STONE, Vector3i(3, 0, 0): Materials.SAND})
+	# 方塊彼此分開，只有四種基本動物符合條件
+	var island := _island_with({Vector3i(0, 0, 0): Materials.DIRT, Vector3i(3, 0, 0): Materials.WATER,
+		Vector3i(6, 0, 0): Materials.STONE, Vector3i(9, 9, 0): Materials.SAND})
 	for i in 10:
 		island.try_visit(0.0, 0, _rng(i))
 	check(island.animals.size() == 8, "四種各來兩隻")
-	check(island.update_animals(0.5, 0), "褪色時有動物離開")
-	check(island.animals.size() == 4, "褪一半剩 4 隻")
-	check(island.try_visit(0.5, 0, _rng()) == "", "容量滿了不會再來")
+	check(island.update_animals(0.75, 0), "褪色時有動物離開")
+	check(island.animals.size() == 5, "褪 75% 剩 5 隻")
+	check(island.try_visit(0.75, 0, _rng()) == "", "容量滿了不會再來")
 	island.update_animals(1.0, 0)
 	check(island.animals.is_empty(), "全灰時動物全部離開")
 
@@ -568,6 +569,84 @@ func test_old_v1_island_save_still_loads() -> void:
 	var i := IslandData.from_dict({"version": 1, "id": 0, "blocks": [[1, 2, 0, "dirt"]]})
 	check(i.get_block(Vector3i(1, 2, 0)) == "dirt", "v0.1 存檔可讀")
 	check(i.animals.is_empty() and i.plants.is_empty() and i.fade_base == 0.0, "新欄位用預設值")
+
+
+# --- 棲地條件與特殊動物 -----------------------------------------------------
+
+func _can_live(island: IslandData, species: String) -> bool:
+	return not island.habitat_cells(species).is_empty()
+
+
+func test_condition_near_blocks() -> void:
+	var island := _island_with({Vector3i(5, 5, 0): Materials.WATER})
+	check(not _can_live(island, "turtle") and not _can_live(island, "duck"), "只有水時沒有烏龜和鴨子")
+	island.place(Vector3i(6, 6, 1), Materials.SAND, {Materials.SAND: 1})
+	check(_can_live(island, "turtle"), "斜對角高一層有沙：烏龜可以來")
+	island.place(Vector3i(5, 7, 0), Materials.DIRT, {Materials.DIRT: 1})
+	check(not _can_live(island, "duck"), "隔兩格的土不算附近")
+	island.place(Vector3i(4, 5, 0), Materials.DIRT, {Materials.DIRT: 1})
+	check(_can_live(island, "duck"), "旁邊有土：鴨子可以來")
+	island.place(Vector3i(3, 3, 2), Materials.SAND, {Materials.SAND: 1})
+	var crab_island := _island_with({Vector3i(0, 0, 0): Materials.SAND, Vector3i(1, 0, 2): Materials.WATER})
+	check(not _can_live(crab_island, "crab"), "高度差兩層不算附近")
+	crab_island.place(Vector3i(1, 1, 1), Materials.WATER, {Materials.WATER: 1})
+	check(_can_live(crab_island, "crab"), "高度差一層的水：螃蟹可以來")
+
+
+func test_condition_near_shrub() -> void:
+	var island := _island_with({Vector3i(2, 2, 0): Materials.DIRT, Vector3i(3, 2, 0): Materials.DIRT})
+	var pinv := {"flower": 1, "shrub": 1}
+	island.plant(Vector3i(3, 2, 0), "flower", pinv)
+	check(not _can_live(island, "rabbit"), "只有花沒有灌木")
+	island.remove_plant(Vector3i(3, 2, 0), pinv)
+	island.plant(Vector3i(3, 2, 0), "shrub", pinv)
+	check(island.habitat_cells("rabbit") == [Vector3i(2, 2, 0)], "灌木旁邊的土可以住兔子")
+
+
+func test_condition_grassland() -> void:
+	var types := {}
+	for p in [Vector3i(4, 4, 0), Vector3i(3, 4, 0), Vector3i(5, 4, 0), Vector3i(4, 3, 0)]:
+		types[p] = Materials.DIRT
+	var island := _island_with(types)
+	check(not _can_live(island, "corgi"), "3 格鄰近草地不夠")
+	island.place(Vector3i(4, 5, 0), Materials.DIRT, {Materials.DIRT: 1})
+	island.place(Vector3i(3, 3, 0), Materials.DIRT, {Materials.DIRT: 1})
+	check(island.is_habitat("corgi", Vector3i(4, 4, 0)), "5 格鄰近草地：柯基可以住")
+	island.place(Vector3i(3, 3, 1), Materials.STONE, {Materials.STONE: 1})
+	check(not island.is_habitat("corgi", Vector3i(4, 4, 0)), "被蓋住的土不算草地")
+
+
+func test_condition_stone_stack() -> void:
+	var island := _island_with({Vector3i(5, 5, 0): Materials.STONE, Vector3i(6, 5, 0): Materials.STONE,
+		Vector3i(6, 5, 1): Materials.STONE})
+	check(not _can_live(island, "goat"), "疊 2 層不夠")
+	island.place(Vector3i(6, 5, 2), Materials.STONE, {Materials.STONE: 1})
+	check(island.is_habitat("goat", Vector3i(5, 5, 0)), "旁邊疊到 3 層：山羊可以住在旁邊")
+	check(island.is_habitat("goat", Vector3i(6, 5, 2)), "疊起來的頂端也可以住")
+	island.remove(Vector3i(6, 5, 1), {Materials.STONE: 0})
+	check(not _can_live(island, "goat"), "中間被拿掉就不算連續 3 層")
+
+
+func test_special_animal_leaves_when_condition_lost() -> void:
+	var island := _island_with({Vector3i(5, 5, 0): Materials.WATER, Vector3i(6, 5, 0): Materials.SAND})
+	var seen := {"fish": "x", "crab": "x", "hermit_crab": "x"}
+	check(island.try_visit(0.0, 0, _rng(), seen) == "turtle", "沒看過的烏龜優先來")
+	var turtle: Dictionary = island.animals[0]
+	island.remove(Vector3i(6, 5, 0), {Materials.SAND: 0})
+	island.update_animals(0.0, 100)
+	check(turtle.confused_since == 100, "沙被拿掉，烏龜冒問號")
+	island.update_animals(0.0, 100 + IslandData.CONFUSED_LEAVE_SECONDS)
+	check(not island.animals.has(turtle), "一天後離開")
+
+
+func test_seen_animals_saved() -> void:
+	var g := GameData.new()
+	g.seen_animals["sheep"] = "2026-11-12"
+	var g2 := GameData.from_dict(JSON.parse_string(JSON.stringify(g.to_dict())))
+	check(g2.seen_animals == {"sheep": "2026-11-12"}, "圖鑑存讀檔")
+	check(GameData.from_dict({"seen_animals": {"dragon": "x"}}).seen_animals.is_empty(), "不存在的動物略過")
+	check(Catalog.animal_ids().size() == 10, "共 10 種動物")
+	check(Catalog.animal_hint("goat") == "住在石上，附近的石頭疊到 3 層", "圖鑑提示")
 
 
 # --- 存檔 ---------------------------------------------------------------

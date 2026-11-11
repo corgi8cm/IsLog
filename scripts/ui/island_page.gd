@@ -45,6 +45,7 @@ func _ready() -> void:
 	cam_box.add_child(UiKit.button("放大", func(): view.zoom_at(1.25, view.size * 0.5)))
 	cam_box.add_child(UiKit.button("縮小", func(): view.zoom_at(0.8, view.size * 0.5)))
 	cam_box.add_child(UiKit.button("置中", view.reset_view))
+	cam_box.add_child(UiKit.button("圖鑑", func(): Encyclopedia.open(_modal_host())))
 
 	# 下方：素材與移除
 	var bottom := VBoxContainer.new()
@@ -98,6 +99,14 @@ func _ready() -> void:
 
 	Game.changed.connect(_refresh)
 	_refresh()
+
+
+## 對話框要蓋住整個畫面，所以開在主畫面上。
+func _modal_host() -> Control:
+	var n: Node = self
+	while n.get_parent() is Control:
+		n = n.get_parent()
+	return n as Control
 
 
 func _change_layer(delta: int) -> void:

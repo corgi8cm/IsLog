@@ -6,6 +6,8 @@ extends RefCounted
 var ci: CanvasItem
 var fade := 0.0
 var alpha := 1.0
+## 剪影模式：圖鑑裡還沒來過的動物只畫出深色輪廓。
+var silhouette := false
 
 
 func _init(canvas: CanvasItem) -> void:
@@ -13,6 +15,8 @@ func _init(canvas: CanvasItem) -> void:
 
 
 func col(c: Color) -> Color:
+	if silhouette:
+		return Color(0.32, 0.36, 0.42, c.a * alpha) if c.a > 0.5 else Color(0, 0, 0, 0)
 	var l := c.get_luminance()
 	var out := c.lerp(Color(l, l, l, c.a), fade)
 	out.a = c.a * alpha
@@ -176,6 +180,66 @@ func animal(species: String, at: Vector2, flip: bool, confused: bool, bob: float
 			circle(p + Vector2(-2 * s, -6), 1.5, Color("a87440"))
 			circle(p + Vector2(5 * s, -3), 2.6, Color("ef5350"))
 			circle(p + Vector2(7 * s, -6), 1, Color("263238"))
+		"rabbit":
+			ellipse(at + Vector2(0, 1), 8, 3, Color(0, 0, 0, 0.15))
+			ellipse(p + Vector2(-1 * s, -5), 6, 4.5, Color("f5efe6"))
+			circle(p + Vector2(-6 * s, -6), 2.4, Color.WHITE)
+			circle(p + Vector2(5 * s, -9), 3.6, Color("f5efe6"))
+			ellipse(p + Vector2(4 * s, -16), 1.4, 4.5, Color("f5efe6"))
+			ellipse(p + Vector2(7 * s, -15.5), 1.4, 4.5, Color("f5efe6"))
+			ellipse(p + Vector2(4 * s, -16), 0.6, 3, Color("f4b6c2"))
+			circle(p + Vector2(7 * s, -9.5), 0.9, Color("263238"))
+		"corgi":
+			ellipse(at + Vector2(0, 1), 11, 4, Color(0, 0, 0, 0.15))
+			for x in [-6, -3, 3, 6]:
+				line(p + Vector2(x * s, -3), p + Vector2(x * s, 0), Color("d9893b"), 2.2)
+			ellipse(p + Vector2(0, -6), 9, 4.5, Color("e9963f"))
+			ellipse(p + Vector2(0, -4), 7, 2.4, Color("fff6e8"))
+			circle(p + Vector2(9 * s, -9), 4, Color("e9963f"))
+			ellipse(p + Vector2(11 * s, -7.5), 2.6, 1.6, Color("fff6e8"))
+			poly(PackedVector2Array([p + Vector2(6 * s, -12), p + Vector2(7 * s, -17),
+				p + Vector2(9 * s, -12)]), Color("d9893b"))
+			poly(PackedVector2Array([p + Vector2(9.5 * s, -12), p + Vector2(12 * s, -16.5),
+				p + Vector2(12 * s, -11)]), Color("d9893b"))
+			circle(p + Vector2(10 * s, -9.5), 0.9, Color("263238"))
+			circle(p + Vector2(-9 * s, -7), 2.2, Color("e9963f"))
+		"turtle":
+			var body := p + Vector2(0, 1)
+			for o in [Vector2(-6, 1), Vector2(6, 1), Vector2(-5, -2), Vector2(5, -2)]:
+				ellipse(body + Vector2(o.x * s, o.y), 2.2, 1.4, Color("8bbf6a"))
+			ellipse(body + Vector2(8 * s, -1), 2.8, 2.2, Color("8bbf6a"))
+			ellipse(body + Vector2(0, -2), 7, 4, Color("5d8a3c"))
+			ellipse(body + Vector2(-1 * s, -3), 4, 2.2, Color("74a64d"))
+			circle(body + Vector2(9 * s, -1.6), 0.7, Color("263238"))
+		"duck":
+			var body := p + Vector2(0, 1)
+			ellipse(body + Vector2(0, -3), 7, 4, Color("fafafa"))
+			poly(PackedVector2Array([body + Vector2(-6 * s, -4), body + Vector2(-10 * s, -7),
+				body + Vector2(-7 * s, -2)]), Color("eeeeee"))
+			circle(body + Vector2(5 * s, -9), 3.4, Color("fafafa"))
+			poly(PackedVector2Array([body + Vector2(7.5 * s, -9.5), body + Vector2(11 * s, -8.5),
+				body + Vector2(7.5 * s, -7.5)]), Color("ffa726"))
+			circle(body + Vector2(6 * s, -10), 0.8, Color("263238"))
+		"goat":
+			ellipse(at + Vector2(0, 1), 10, 4, Color(0, 0, 0, 0.15))
+			for x in [-5, -2, 3, 6]:
+				line(p + Vector2(x * s, -3), p + Vector2(x * s, 1), Color("5d4a3a"), 1.8)
+			ellipse(p + Vector2(0, -7), 8, 4.5, Color("ece7df"))
+			ellipse(p + Vector2(8 * s, -11), 3, 3.6, Color("ece7df"))
+			ci.draw_polyline(PackedVector2Array([p + Vector2(7 * s, -14), p + Vector2(5 * s, -18),
+				p + Vector2(3 * s, -17)]), col(Color("8d7b68")), 1.8, true)
+			line(p + Vector2(9 * s, -8), p + Vector2(9 * s, -5), Color("cfc6b8"), 1.6)
+			circle(p + Vector2(9 * s, -11.5), 0.8, Color("263238"))
+		"crab":
+			ellipse(at + Vector2(0, 1), 9, 3, Color(0, 0, 0, 0.15))
+			for x in [-6, -4, 4, 6]:
+				line(p + Vector2(x, -2), p + Vector2(x * 1.4, 1), Color("c62828"), 1.4)
+			ellipse(p + Vector2(0, -4), 7, 4, Color("e53935"))
+			for x in [-1, 1]:
+				line(p + Vector2(x * 5, -6), p + Vector2(x * 9, -10), Color("e53935"), 1.6)
+				circle(p + Vector2(x * 10, -11), 2.6, Color("ef5350"))
+				line(p + Vector2(x * 2, -7), p + Vector2(x * 2, -10), Color("c62828"), 1)
+				circle(p + Vector2(x * 2, -10.5), 1, Color("263238"))
 	if confused:
 		var b := at + Vector2(0, -30)
 		circle(b, 7, Color(1, 1, 1, 0.95))

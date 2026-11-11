@@ -106,7 +106,8 @@ func _event_reward_line(result: Dictionary) -> String:
 
 func _toast_result(lines: Array, result: Dictionary) -> void:
 	if result.get("visitor", "") != "":
-		lines.append("%s來到你的島上了！" % Catalog.animal_name(result.visitor))
+		var new_text := "（新發現！已記錄到圖鑑）" if Game.result_first_visit else ""
+		lines.append("%s來到你的島上了！%s" % [Catalog.animal_name(result.visitor), new_text])
 	var capped: bool = result.capped and result.get("parent", {}).get("capped", true)
 	_show_toast("
 ".join(lines), Color("b07a2a") if capped else Color("4f8a34"))

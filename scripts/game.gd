@@ -17,6 +17,8 @@ var data: GameData = GameData.new()
 var island: IslandData = IslandData.new()
 var rng := RandomNumberGenerator.new()
 var _tick_state := ""
+## 最近一次來訪的動物是不是第一次來（給畫面顯示「新的動物！」）。
+var result_first_visit := false
 
 
 func _ready() -> void:
@@ -106,7 +108,11 @@ func _after_completion(event_id: int) -> String:
 	island.care(today())
 	var fade := current_fade()
 	island.update_animals(fade, now())
-	var visitor := island.try_visit(fade, now(), rng)
+	var visitor := island.try_visit(fade, now(), rng, data.seen_animals)
+	if visitor != "":
+		result_first_visit = not data.seen_animals.has(visitor)
+		if result_first_visit:
+			data.seen_animals[visitor] = today()
 	if event_id >= 0:
 		data.find_event(event_id).visitor = visitor
 	return visitor
@@ -201,6 +207,10 @@ func load_game() -> void:
 	data = GameData.from_dict(d) if not d.is_empty() else GameData.new()
 	var i := _read_json(_island_path(0))
 	island = IslandData.from_dict(i) if not i.is_empty() else IslandData.new()
+	# 舊存檔沒有圖鑑：島上已經有的動物算來過
+	for a in island.animals:
+		if not data.seen_animals.has(a.species):
+			data.seen_animals[a.species] = today()
 	changed.emit()
 
 
