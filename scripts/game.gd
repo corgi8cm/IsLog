@@ -52,8 +52,8 @@ func now() -> int:
 
 # --- 事件 ---------------------------------------------------------------
 
-func add_event(title: String) -> Dictionary:
-	var ev := data.add_event(title, now())
+func add_event(title: String, subtask_titles: Array = []) -> Dictionary:
+	var ev := data.add_event(title, now(), subtask_titles)
 	if not ev.is_empty():
 		_commit()
 	return ev
@@ -64,14 +64,45 @@ func complete_event(id: int) -> Dictionary:
 	var result := data.complete_event(id, today(), now(), rng)
 	if not result.ok:
 		return result
+	result.visitor = _after_completion(id)
+	_commit()
+	return result
+
+
+func add_subtask(event_id: int, title: String) -> Dictionary:
+	var sub := data.add_subtask(event_id, title)
+	if not sub.is_empty():
+		_commit()
+	return sub
+
+
+func delete_subtask(event_id: int, sub_id: int) -> bool:
+	var ok := data.delete_subtask(event_id, sub_id)
+	if ok:
+		_commit()
+	return ok
+
+
+## 完成子事件：子事件也算完成一件事，一樣會照顧島嶼、讓動物來訪（一次動作最多來一隻）。
+func complete_subtask(event_id: int, sub_id: int) -> Dictionary:
+	var result := data.complete_subtask(event_id, sub_id, today(), now(), rng)
+	if not result.ok:
+		return result
+	var parent_done: bool = not result.parent.is_empty()
+	result.visitor = _after_completion(event_id if parent_done else -1)
+	_commit()
+	return result
+
+
+## 完成一件事之後：照顧島嶼、更新動物、讓一隻動物來訪。回傳來訪的物種。
+func _after_completion(event_id: int) -> String:
 	island.care(today())
 	var fade := current_fade()
 	island.update_animals(fade, now())
 	var visitor := island.try_visit(fade, now(), rng)
-	result.visitor = visitor
-	data.find_event(id).visitor = visitor
-	_commit()
-	return result
+	if event_id >= 0:
+		data.find_event(event_id).visitor = visitor
+	return visitor
 
 
 func delete_event(id: int) -> bool:

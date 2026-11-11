@@ -176,6 +176,117 @@ func test_draw_order_back_to_front() -> void:
 	check(Iso.draw_key(Vector2i(2, 2), 0) < Iso.draw_key(Vector2i(2, 2), 1), "同位置低的先畫")
 
 
+# --- 子事件 -------------------------------------------------------------
+
+func _count(inv: Dictionary) -> int:
+	var n := 0
+	for t in inv:
+		n += inv[t]
+	return n
+
+
+func test_subtask_add_and_delete() -> void:
+	var g := GameData.new()
+	var ev := g.add_event("整理房間", 0, ["收衣服", "  ", "擦桌子"])
+	check(ev.subtasks.size() == 2, "建立時帶入子事件（略過空白）")
+	var sub := g.add_subtask(ev.id, " 倒垃圾 ")
+	check(sub.title == "倒垃圾" and ev.subtasks.size() == 3, "新增子事件")
+	check(g.add_subtask(999, "x").is_empty(), "不存在的事件不能加子事件")
+	check(g.delete_subtask(ev.id, sub.id) and ev.subtasks.size() == 2, "刪除子事件")
+	check(GameData.subtask_progress(ev) == Vector2i(0, 2), "進度 0/2")
+
+
+func test_subtask_gives_two_and_counts_toward_daily() -> void:
+	var g := GameData.new()
+	var ev := g.add_event("整理房間", 0, ["a", "b", "c"])
+	var r := g.complete_subtask(ev.id, ev.subtasks[0].id, "2026-11-12", 0, _rng())
+	check(r.ok and r.rewards.size() == 2, "子事件給 2 個素材")
+	check(r.parent.is_empty(), "還沒全部完成，母事件不會自動完成")
+	check(g.completions_on("2026-11-12") == 1, "子事件計 1 件")
+	check(g.daily_main_count == 0, "子事件不算進每天必掉植物的判斷")
+	check(_count(g.plants) == 0, "子事件不掉植物")
+	check(not g.complete_subtask(ev.id, ev.subtasks[0].id, "2026-11-12", 0, _rng()).ok, "不可重複完成")
+
+
+func test_all_subtasks_done_auto_completes_parent_with_bonus() -> void:
+	var g := GameData.new()
+	var ev := g.add_event("整理房間", 0, ["a", "b", "c"])
+	var rng := _rng(1)
+	g.complete_subtask(ev.id, ev.subtasks[0].id, "2026-11-12", 0, rng)
+	g.complete_subtask(ev.id, ev.subtasks[1].id, "2026-11-12", 0, rng)
+	var r := g.complete_subtask(ev.id, ev.subtasks[2].id, "2026-11-12", 0, rng)
+	check(not r.parent.is_empty() and r.parent.ok, "最後一個子事件完成時母事件自動完成")
+	check(r.parent.bonus == 3 and r.parent.rewards.size() == 6, "母事件給 3 + 3 個素材")
+	check(r.parent.plant != "", "母事件是今天第一個主要事件，必掉植物")
+	check(ev.done_date == "2026-11-12", "母事件標記完成")
+	check(g.completions_on("2026-11-12") == 4, "3 個子事件 + 母事件共 4 件")
+	check(_count(g.inventory) == 12, "總共 2×3 + 6 = 12 個素材")
+
+
+func test_completing_parent_directly_ticks_rest_without_bonus() -> void:
+	var g := GameData.new()
+	var ev := g.add_event("整理房間", 0, ["a", "b", "c"])
+	g.complete_subtask(ev.id, ev.subtasks[0].id, "2026-11-12", 0, _rng())
+	var r := g.complete_event(ev.id, "2026-11-12", 0, _rng(2))
+	check(r.bonus == 1 and r.rewards.size() == 4, "只算自己打勾的 1 個子事件：3 + 1")
+	check(GameData.subtask_progress(ev) == Vector2i(3, 3), "剩下的子事件一起打勾")
+	check(not ev.subtasks[1].self_done and ev.subtasks[1].rewards.is_empty(), "一起打勾的不給素材")
+	check(g.completions_on("2026-11-12") == 2, "一起打勾的不計件")
+	check(not g.complete_subtask(ev.id, ev.subtasks[2].id, "2026-11-12", 0, _rng()).ok, "母事件完成後不能再完成子事件")
+	check(g.add_subtask(ev.id, "d").is_empty(), "母事件完成後不能再加子事件")
+
+
+func test_subtasks_across_days_and_deleted_ones() -> void:
+	var g := GameData.new()
+	var ev := g.add_event("讀完一本書", 0, ["第一章", "第二章", "第三章"])
+	g.complete_subtask(ev.id, ev.subtasks[0].id, "2026-11-10", 0, _rng())
+	g.complete_subtask(ev.id, ev.subtasks[1].id, "2026-11-11", 0, _rng())
+	check(g.completions_on("2026-11-11") == 1, "子事件算在完成那天")
+	g.delete_subtask(ev.id, ev.subtasks[0].id)
+	var r := g.complete_event(ev.id, "2026-11-12", 0, _rng())
+	check(r.bonus == 1, "跨日完成的子事件算加成，刪掉的不算")
+
+
+func test_daily_limit_with_subtasks() -> void:
+	var g := GameData.new()
+	var ev := g.add_event("大掃除", 0, ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"])
+	var rng := _rng(4)
+	for i in 9:
+		check(g.complete_subtask(ev.id, ev.subtasks[i].id, "2026-11-12", 0, rng).rewards.size() == 2,
+			"第 %d 件子事件有素材" % (i + 1))
+	var r := g.complete_subtask(ev.id, ev.subtasks[9].id, "2026-11-12", 0, rng)
+	check(r.rewards.size() == 2, "第 10 件子事件有素材")
+	check(r.parent.capped and r.parent.rewards.is_empty() and r.parent.plant == "", "第 11 件（母事件）超過上限，沒有素材與植物")
+
+
+func test_first_main_event_gets_plant_even_after_subtasks() -> void:
+	var g := GameData.new()
+	var parent := g.add_event("p", 0, ["a"])
+	var normal := g.add_event("n", 0)
+	g.complete_subtask(parent.id, parent.subtasks[0].id, "2026-11-12", 0, _rng())
+	# 母事件已自動完成並拿走當天必掉的植物；下一件一般事件不保證
+	check(parent.plant != "", "子事件之後完成的母事件仍是今天第一個主要事件")
+	check(g.daily_main_count == 1, "主要事件計數 1")
+	g.complete_event(normal.id, "2026-11-12", 0, _rng())
+	check(g.daily_main_count == 2, "主要事件計數 2")
+
+
+func test_subtask_save_roundtrip_and_v1_compat() -> void:
+	var g := GameData.new()
+	var ev := g.add_event("p", 0, ["a", "b"])
+	g.complete_subtask(ev.id, ev.subtasks[0].id, "2026-11-12", 0, _rng())
+	var g2 := GameData.from_dict(JSON.parse_string(JSON.stringify(g.to_dict())))
+	var ev2 := g2.find_event(ev.id)
+	check(ev2.subtasks.size() == 2 and ev2.subtasks[0].self_done, "子事件存讀檔")
+	check(typeof(ev2.subtasks[0].id) == TYPE_INT, "子事件 id 為整數")
+	check(g2.next_id == g.next_id, "next_id 相同")
+	check(g2.add_subtask(ev.id, "c").id == g.next_id, "新 id 不重複")
+	var old := GameData.from_dict({"events": [{"id": 3, "title": "舊事件"}], "next_id": 4,
+		"daily_date": "2026-11-12", "daily_count": 2})
+	check(old.events[0].subtasks.is_empty(), "v1 事件沒有子事件")
+	check(old.daily_main_count == 2, "v1 今天的件數都視為主要事件")
+
+
 # --- 植物 ---------------------------------------------------------------
 
 func test_first_completion_of_day_always_drops_plant() -> void:

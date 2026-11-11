@@ -3,10 +3,15 @@ extends Control
 
 const PAGE_BG := Color("f4f8fb")
 const DONE_COLOR := Color("8a97a5")
+const DONE_BG := Color("d8f0c8")
 
 var _input: LineEdit
 var _list: VBoxContainer
 var _toast: Label
+## 哪些事件展開了子事件（只存在畫面上，不存檔）。
+var _expanded := {}
+## 新增子事件後重建畫面時，讓那個事件的輸入框保持焦點。
+var _refocus_event := -1
 
 
 func _ready() -> void:
@@ -70,29 +75,72 @@ func _add() -> void:
 
 func _complete(id: int) -> void:
 	var result := Game.complete_event(id)
+	if result.ok:
+		_toast_result([_event_reward_line(result)], result)
+
+
+func _complete_sub(event_id: int, sub_id: int) -> void:
+	var result := Game.complete_subtask(event_id, sub_id)
 	if not result.ok:
 		return
 	var lines := []
-	var color := Color("4f8a34")
 	if result.capped:
-		lines.append("今天的素材已經拿滿 %d 件了，明天再來！" % GameData.DAILY_LIMIT)
-		color = Color("b07a2a")
+		lines.append("今天的素材已經拿滿 %d 件了" % GameData.DAILY_LIMIT)
 	else:
-		var names := []
-		for t in result.rewards:
-			names.append(Materials.display_name(t))
-		var text := "獲得素材：" + "、".join(names)
-		if result.plant != "":
-			text += "，還有一株%s！" % Catalog.plant_name(result.plant)
-		lines.append(text)
+		lines.append("子事件完成：" + _reward_summary(result.rewards))
+	if not result.parent.is_empty():
+		lines.append("全部完成！" + _event_reward_line(result.parent))
+	_toast_result(lines, result)
+
+
+func _event_reward_line(result: Dictionary) -> String:
+	if result.capped:
+		return "今天的素材已經拿滿 %d 件了，明天再來！" % GameData.DAILY_LIMIT
+	var text := "獲得素材：" + _reward_summary(result.rewards)
+	if result.get("bonus", 0) > 0:
+		text += "（子事件加成 +%d）" % result.bonus
+	if result.plant != "":
+		text += "，還有一株%s！" % Catalog.plant_name(result.plant)
+	return text
+
+
+func _toast_result(lines: Array, result: Dictionary) -> void:
 	if result.get("visitor", "") != "":
 		lines.append("%s來到你的島上了！" % Catalog.animal_name(result.visitor))
+	var capped: bool = result.capped and result.get("parent", {}).get("capped", true)
 	_show_toast("
-".join(lines), color)
+".join(lines), Color("b07a2a") if capped else Color("4f8a34"))
 
 
-func _redo(title: String) -> void:
-	Game.add_event(title)
+## 素材清單 → 「土×2、水、石」
+static func _reward_summary(rewards: Array) -> String:
+	if rewards.is_empty():
+		return "沒有素材"
+	var parts := []
+	for t in Materials.TYPES:
+		var n := rewards.count(t)
+		if n > 0:
+			parts.append(Materials.display_name(t) + ("×%d" % n if n > 1 else ""))
+	return "、".join(parts)
+
+
+func _redo(ev: Dictionary) -> void:
+	var titles := []
+	for sub in ev.subtasks:
+		titles.append(sub.title)
+	Game.add_event(ev.title, titles)
+
+
+func _toggle_subtasks(id: int) -> void:
+	_expanded[id] = not _expanded.get(id, false)
+	_rebuild()
+
+
+func _add_sub(event_id: int, input: LineEdit) -> void:
+	# 新增成功會觸發重建畫面，所以要在呼叫前先記下要保持焦點的事件
+	_refocus_event = event_id
+	if Game.add_subtask(event_id, input.text).is_empty():
+		_refocus_event = -1
 
 
 func _show_toast(text: String, color: Color) -> void:
@@ -115,7 +163,7 @@ func _rebuild() -> void:
 		empty.add_theme_color_override("font_color", DONE_COLOR)
 		_list.add_child(empty)
 	for ev in pending:
-		_list.add_child(_pending_row(ev))
+		_list.add_child(_pending_card(ev))
 
 	var done := Game.data.events_done_on(Game.today())
 	if not done.is_empty():
@@ -123,6 +171,7 @@ func _rebuild() -> void:
 		done.reverse()
 		for ev in done:
 			_list.add_child(_done_row(ev))
+	_refocus_event = -1
 
 
 func _section(text: String) -> Label:
@@ -131,17 +180,20 @@ func _section(text: String) -> Label:
 	return l
 
 
-func _row(bg: Color) -> Array:
+func _card(bg: Color) -> Array:
 	var panel := PanelContainer.new()
 	panel.add_theme_stylebox_override("panel", UiKit.box(bg, 16))
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 8)
+	panel.add_child(col)
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 12)
-	panel.add_child(row)
-	return [panel, row]
+	row.add_theme_constant_override("separation", 10)
+	col.add_child(row)
+	return [panel, row, col]
 
 
-func _title_label(text: String, color: Color) -> Label:
-	var l := UiKit.label(text)
+func _title_label(text: String, color: Color, font_size: int = 0) -> Label:
+	var l := UiKit.label(text, font_size)
 	l.size_flags_horizontal = SIZE_EXPAND_FILL
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -149,35 +201,87 @@ func _title_label(text: String, color: Color) -> Label:
 	return l
 
 
-func _pending_row(ev: Dictionary) -> Control:
-	var parts := _row(Color.WHITE)
+func _small_button(text: String, bg: Color, callback: Callable) -> Button:
+	var b := UiKit.button(text, callback)
+	b.add_theme_stylebox_override("normal", UiKit.box(bg, 12))
+	b.add_theme_stylebox_override("pressed", UiKit.box(bg.darkened(0.1), 12))
+	return b
+
+
+func _pending_card(ev: Dictionary) -> Control:
+	var parts := _card(Color.WHITE)
 	var row: HBoxContainer = parts[1]
-	var done_btn := UiKit.button("完成", _complete.bind(ev.id))
-	done_btn.add_theme_stylebox_override("normal", UiKit.box(Color("d8f0c8"), 12))
-	done_btn.add_theme_stylebox_override("pressed", UiKit.box(Color("b9e3a0"), 12))
-	row.add_child(done_btn)
-	row.add_child(_title_label(ev.title, UiKit.TEXT_COLOR))
-	var del := UiKit.button("刪除", Game.delete_event.bind(ev.id))
-	del.add_theme_stylebox_override("normal", UiKit.box(Color("f6f0f0"), 12))
-	row.add_child(del)
+	var col: VBoxContainer = parts[2]
+	row.add_child(_small_button("完成", DONE_BG, _complete.bind(ev.id)))
+	var progress := GameData.subtask_progress(ev)
+	var title: String = ev.title
+	if progress.y > 0:
+		title += "（%d/%d）" % [progress.x, progress.y]
+	row.add_child(_title_label(title, UiKit.TEXT_COLOR))
+	var expanded: bool = _expanded.get(ev.id, false)
+	var sub_label := "收起" if expanded else ("子事件" if progress.y == 0 else "展開")
+	row.add_child(_small_button(sub_label, Color("e8f1fb"), _toggle_subtasks.bind(ev.id)))
+	row.add_child(_small_button("刪除", Color("f6f0f0"), Game.delete_event.bind(ev.id)))
+	if expanded:
+		for sub in ev.subtasks:
+			col.add_child(_subtask_row(ev, sub))
+		col.add_child(_add_sub_row(ev))
 	return parts[0]
 
 
+func _subtask_row(ev: Dictionary, sub: Dictionary) -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	var indent := Control.new()
+	indent.custom_minimum_size = Vector2(24, 0)
+	row.add_child(indent)
+	if sub.done_date == "":
+		row.add_child(_small_button("完成", DONE_BG, _complete_sub.bind(ev.id, sub.id)))
+		row.add_child(_title_label(sub.title, UiKit.TEXT_COLOR, 26))
+	else:
+		row.add_child(_title_label("✓ " + sub.title, DONE_COLOR, 26))
+		var r := UiKit.label(_reward_summary(sub.rewards), 22)
+		r.add_theme_color_override("font_color", DONE_COLOR)
+		row.add_child(r)
+	row.add_child(_small_button("刪除", Color("f6f0f0"), Game.delete_subtask.bind(ev.id, sub.id)))
+	return row
+
+
+func _add_sub_row(ev: Dictionary) -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	var indent := Control.new()
+	indent.custom_minimum_size = Vector2(24, 0)
+	row.add_child(indent)
+	var input := LineEdit.new()
+	input.placeholder_text = "新增子事件"
+	input.size_flags_horizontal = SIZE_EXPAND_FILL
+	input.max_length = 60
+	input.add_theme_font_size_override("font_size", 26)
+	input.add_theme_stylebox_override("normal", UiKit.box(PAGE_BG, 12))
+	input.add_theme_stylebox_override("focus", UiKit.box(PAGE_BG, 12, Color("7cc35a")))
+	input.text_submitted.connect(func(_t): _add_sub(ev.id, input))
+	row.add_child(input)
+	row.add_child(UiKit.button("新增", _add_sub.bind(ev.id, input)))
+	if _refocus_event == ev.id:
+		input.ready.connect(input.grab_focus, CONNECT_DEFERRED)
+	return row
+
+
 func _done_row(ev: Dictionary) -> Control:
-	var parts := _row(Color("eef2f5"))
+	var parts := _card(Color("eef2f5"))
 	var row: HBoxContainer = parts[1]
-	row.add_child(_title_label("✓ " + ev.title, DONE_COLOR))
-	var reward_text := "沒有素材"
-	if not ev.rewards.is_empty():
-		var names := []
-		for t in ev.rewards:
-			names.append(Materials.display_name(t))
-		reward_text = "".join(names)
+	var title: String = "✓ " + ev.title
+	var progress := GameData.subtask_progress(ev)
+	if progress.y > 0:
+		title += "（子事件 %d）" % progress.y
+	row.add_child(_title_label(title, DONE_COLOR))
+	var reward_text := _reward_summary(ev.rewards)
 	if ev.plant != "":
 		reward_text += "＋" + Catalog.plant_name(ev.plant)
-	var r := UiKit.label(reward_text, 24)
+	var r := UiKit.label(reward_text, 22)
 	r.add_theme_color_override("font_color", DONE_COLOR)
 	r.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	row.add_child(r)
-	row.add_child(UiKit.button("再一次", _redo.bind(ev.title)))
+	row.add_child(UiKit.button("再一次", _redo.bind(ev)))
 	return parts[0]

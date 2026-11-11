@@ -17,6 +17,11 @@ func _run() -> void:
 		game.add_event(title)
 	for i in 2:
 		game.complete_event(game.data.events[i].id)
+	var room: Dictionary = game.add_event("整理房間", ["收衣服", "擦桌子", "倒垃圾"])
+	game.complete_subtask(room.id, room.subtasks[0].id)
+	var book: Dictionary = game.add_event("讀完一本書", ["第一章", "第二章"])
+	game.complete_subtask(book.id, book.subtasks[0].id)
+	game.complete_subtask(book.id, book.subtasks[1].id)
 	for t in Materials.TYPES:
 		game.data.inventory[t] += 40
 	for x in 10:
@@ -43,6 +48,7 @@ func _run() -> void:
 
 	var main: Control = load("res://scenes/main.tscn").instantiate()
 	root.add_child(main)
+	main.get("_pages")[0].call("_toggle_subtasks", room.id)
 	await _shot(out_dir, "events.png")
 	main.call("_show_page", 1)
 	await _shot(out_dir, "island.png")

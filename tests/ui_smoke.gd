@@ -69,8 +69,43 @@ func _run() -> void:
 	check(not game.island.plants.has(cell) and game.island.has_block(cell), "移除先收回植物，方塊還在")
 	check(game.data.plants["flower"] == 1, "植物退回背包")
 
+	# 事件頁：展開子事件、新增、完成
+	main.call("_show_page", 0)
+	var events_page = main.get("_pages")[0]
+	var ev: Dictionary = game.add_event("整理房間")
+	events_page.call("_toggle_subtasks", ev.id)
+	await _frames()
+	for title in ["收衣服", "擦桌子"]:
+		var input := _find(events_page, func(n): return n is LineEdit and n.placeholder_text == "新增子事件") as LineEdit
+		input.text = title
+		input.text_submitted.emit(title)
+		await _frames()
+	check(ev.subtasks.size() == 2, "從畫面新增兩個子事件")
+	var focused := root.gui_get_focus_owner()
+	check(focused is LineEdit and focused.placeholder_text == "新增子事件", "新增後輸入框保持焦點")
+	check(_find(events_page, func(n): return n is Label and n.text == "整理房間（0/2）") != null, "顯示進度 0/2")
+	for i in 2:
+		var row: Node = _find(events_page, func(n): return n is Label and n.text == ev.subtasks[i].title).get_parent()
+		var btn: Button = _find(row, func(n): return n is Button and n.text == "完成")
+		btn.pressed.emit()
+		await _frames()
+	check(ev.done_date != "", "兩個子事件完成後母事件自動完成")
+	check(_find(events_page, func(n): return n is Label and n.text.begins_with("✓ 整理房間")) != null, "出現在今天完成")
+
 	_cleanup("user://ui_smoke")
 	quit(1 if _failures > 0 else 0)
+
+
+func _find(node: Node, pred: Callable) -> Node:
+	for c in node.get_children():
+		if c.is_queued_for_deletion():
+			continue
+		if pred.call(c):
+			return c
+		var found := _find(c, pred)
+		if found != null:
+			return found
+	return null
 
 
 func _cell_screen_pos(view: Control, cell: Vector3i) -> Vector2:
