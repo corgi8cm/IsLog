@@ -4,10 +4,12 @@ extends RefCounted
 
 const DAILY_LIMIT := 10
 const REWARD_COUNT := 3
+const PLANT_DROP_CHANCE := 0.3
 const SAVE_VERSION := 1
 
 var inventory: Dictionary = Materials.empty_inventory()
-## 每個事件：{id, title, created, done_date, done_at, rewards}
+var plants: Dictionary = Catalog.empty_plant_inventory()
+## 每個事件：{id, title, created, done_date, done_at, rewards, plant, visitor}
 ## done_date 為空字串代表尚未完成。
 var events: Array = []
 var next_id := 1
@@ -28,6 +30,8 @@ func add_event(title: String, now_unix: int) -> Dictionary:
 		"done_date": "",
 		"done_at": 0,
 		"rewards": [],
+		"plant": "",
+		"visitor": "",
 	}
 	next_id += 1
 	events.append(ev)
@@ -68,32 +72,41 @@ func rewards_left_on(date: String) -> int:
 	return maxi(0, DAILY_LIMIT - completions_on(date))
 
 
-## 完成事件。回傳 {ok, rewards: Array[String], capped: bool}。
+## 完成事件。回傳 {ok, rewards: Array[String], plant: String, capped: bool}。
+## 有素材時 30% 掉落植物；每天第一件事件必定掉一株。
 func complete_event(id: int, today: String, now_unix: int, rng: RandomNumberGenerator) -> Dictionary:
 	var ev := find_event(id)
 	if ev.is_empty() or ev.done_date != "":
-		return {"ok": false, "rewards": [], "capped": false}
+		return {"ok": false, "rewards": [], "plant": "", "capped": false}
 	if daily_date != today:
 		daily_date = today
 		daily_count = 0
 	var rewards: Array = []
+	var plant := ""
 	if is_pro or daily_count < DAILY_LIMIT:
 		for i in REWARD_COUNT:
 			var t: String = Materials.TYPES[rng.randi_range(0, Materials.TYPES.size() - 1)]
 			rewards.append(t)
 			inventory[t] += 1
+		var first_today := daily_count == 0
+		if rng.randf() < PLANT_DROP_CHANCE or first_today:
+			var ids := Catalog.plant_ids()
+			plant = ids[rng.randi_range(0, ids.size() - 1)]
+			plants[plant] += 1
 	daily_count += 1
 	total_completed += 1
 	ev.done_date = today
 	ev.done_at = now_unix
 	ev.rewards = rewards
-	return {"ok": true, "rewards": rewards, "capped": rewards.is_empty()}
+	ev.plant = plant
+	return {"ok": true, "rewards": rewards, "plant": plant, "capped": rewards.is_empty()}
 
 
 func to_dict() -> Dictionary:
 	return {
 		"version": SAVE_VERSION,
 		"inventory": inventory.duplicate(),
+		"plants": plants.duplicate(),
 		"events": events.duplicate(true),
 		"next_id": next_id,
 		"daily_date": daily_date,
@@ -108,6 +121,9 @@ static func from_dict(d: Dictionary) -> GameData:
 	var inv: Dictionary = d.get("inventory", {})
 	for t in Materials.TYPES:
 		g.inventory[t] = int(inv.get(t, 0))
+	var plant_inv: Dictionary = d.get("plants", {})
+	for id in Catalog.plant_ids():
+		g.plants[id] = int(plant_inv.get(id, 0))
 	for raw in d.get("events", []):
 		if typeof(raw) != TYPE_DICTIONARY:
 			continue
@@ -121,6 +137,8 @@ static func from_dict(d: Dictionary) -> GameData:
 			"done_date": str(raw.get("done_date", "")),
 			"done_at": int(raw.get("done_at", 0)),
 			"rewards": rewards,
+			"plant": str(raw.get("plant", "")),
+			"visitor": str(raw.get("visitor", "")),
 		})
 	g.next_id = int(d.get("next_id", 1))
 	for ev in g.events:

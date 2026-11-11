@@ -54,6 +54,21 @@ func _run() -> void:
 	check(not game.island.has_block(cell), "點頂面移除方塊")
 	check(game.data.inventory[Materials.DIRT] == 2, "移除退回素材")
 
+	# 植物模式：點方塊頂面種花；移除模式先收回植物
+	page.call("_select_tool", Materials.DIRT)
+	await _click(_cell_screen_pos(view, cell))
+	check(game.island.has_block(cell), "再放一次方塊")
+	game.data.plants["flower"] = 1
+	page.call("_select_tool", "plant")
+	await _frames()
+	await _click(top_face)
+	check(game.island.plants.get(cell, "") == "flower", "點方塊種花")
+	check(game.data.plants["flower"] == 0, "種花扣植物")
+	page.call("_select_tool", "remove")
+	await _click(top_face)
+	check(not game.island.plants.has(cell) and game.island.has_block(cell), "移除先收回植物，方塊還在")
+	check(game.data.plants["flower"] == 1, "植物退回背包")
+
 	_cleanup("user://ui_smoke")
 	quit(1 if _failures > 0 else 0)
 

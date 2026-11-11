@@ -28,6 +28,18 @@ func _run() -> void:
 	for p in [Vector3i(6, 6, 1), Vector3i(6, 5, 1), Vector3i(5, 6, 1)]:
 		game.place_block(p, Materials.WATER)
 	game.place_block(Vector3i(7, 4, 1), Materials.SAND)
+	game.place_block(Vector3i(8, 4, 0), Materials.SAND)
+	var planting := {
+		Vector3i(2, 5, 0): "fruit_tree", Vector3i(4, 6, 0): "flower", Vector3i(5, 3, 0): "shrub",
+		Vector3i(2, 4, 0): "mushroom", Vector3i(6, 6, 1): "water_lily", Vector3i(5, 6, 1): "reed",
+		Vector3i(3, 3, 2): "succulent", Vector3i(4, 3, 1): "moss", Vector3i(7, 4, 1): "cactus",
+		Vector3i(8, 4, 0): "palm", Vector3i(3, 4, 1): "alpine_flower", Vector3i(6, 5, 1): "waterweed",
+	}
+	for p in planting:
+		game.data.plants[planting[p]] += 1
+		game.plant(p, planting[p])
+	for i in 4:
+		game.island.try_visit(0.0, game.now(), game.rng)
 
 	var main: Control = load("res://scenes/main.tscn").instantiate()
 	root.add_child(main)
@@ -38,6 +50,15 @@ func _run() -> void:
 	page.view.layer = 1
 	page.view.rotation_step = 1
 	await _shot(out_dir, "island_rotated_layer2.png")
+	page.view.layer = 0
+	page.view.rotation_step = 0
+	page.view.zoom = 1.6
+	await _shot(out_dir, "island_zoom.png")
+	# 模擬 4 天沒照顧：褪色一半
+	game.island.last_care_date = IslandData.days_ago(game.today(), 4)
+	game.tick()
+	page.view.zoom = 1.0
+	await _shot(out_dir, "island_faded.png")
 	_remove_dir("user://screenshot_demo")
 	quit()
 

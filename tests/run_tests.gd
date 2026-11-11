@@ -176,6 +176,227 @@ func test_draw_order_back_to_front() -> void:
 	check(Iso.draw_key(Vector2i(2, 2), 0) < Iso.draw_key(Vector2i(2, 2), 1), "同位置低的先畫")
 
 
+# --- 植物 ---------------------------------------------------------------
+
+func test_first_completion_of_day_always_drops_plant() -> void:
+	for seed_value in 30:
+		var g := GameData.new()
+		var ev := g.add_event("a", 0)
+		var r := g.complete_event(ev.id, "2026-11-12", 0, _rng(seed_value))
+		check(r.plant != "" and Catalog.is_plant(r.plant), "每天第一件必定掉植物（seed %d）" % seed_value)
+		check(g.plants[r.plant] == 1, "植物應進背包")
+
+
+func test_plant_drop_rate_about_30_percent() -> void:
+	var g := GameData.new()
+	var rng := _rng(99)
+	var drops := 0
+	var total := 0
+	for day in 400:
+		var date := "day-%d" % day
+		for i in 3:
+			var ev := g.add_event("x", 0)
+			var r := g.complete_event(ev.id, date, 0, rng)
+			if i > 0:
+				total += 1
+				if r.plant != "":
+					drops += 1
+	var rate := float(drops) / total
+	check(rate > 0.25 and rate < 0.35, "第二件之後掉落率約 30%%（實際 %.3f）" % rate)
+
+
+func test_capped_completion_drops_no_plant() -> void:
+	var g := GameData.new()
+	var rng := _rng(5)
+	for i in GameData.DAILY_LIMIT:
+		g.complete_event(g.add_event("x", 0).id, "2026-11-12", 0, rng)
+	var before := g.plants.duplicate()
+	for i in 20:
+		var r := g.complete_event(g.add_event("y", 0).id, "2026-11-12", 0, rng)
+		check(r.plant == "", "超過上限不掉植物")
+	check(g.plants == before, "植物背包不變")
+
+
+func test_planting_rules() -> void:
+	var island := IslandData.new()
+	var inv := Materials.empty_inventory()
+	inv[Materials.DIRT] = 5
+	inv[Materials.SAND] = 1
+	var pinv := Catalog.empty_plant_inventory()
+	pinv["flower"] = 2
+	var a := Vector3i(1, 1, 0)
+	island.place(a, Materials.DIRT, inv)
+	island.place(Vector3i(2, 1, 0), Materials.SAND, inv)
+	check(island.plant_problem(Vector3i(5, 5, 0), "flower", pinv) == "no_block", "沒有方塊不能種")
+	check(island.plant_problem(Vector3i(2, 1, 0), "flower", pinv) == "wrong_base", "花不能種在沙上")
+	check(island.plant(a, "flower", pinv), "花可以種在土上")
+	check(pinv["flower"] == 1, "種植扣植物")
+	check(island.plant_problem(a, "flower", pinv) == "occupied", "同一格不能種兩株")
+	check(island.place_problem(a + Vector3i(0, 0, 1), Materials.DIRT, inv) == "plant_below", "不能把方塊蓋在植物上")
+	var b := Vector3i(3, 3, 0)
+	island.place(b, Materials.DIRT, inv)
+	island.place(b + Vector3i(0, 0, 1), Materials.DIRT, inv)
+	check(island.plant_problem(b, "flower", pinv) == "covered", "被蓋住的方塊不能種")
+	check(island.remove_plant(a, pinv) == "flower" and pinv["flower"] == 2, "移除植物退回背包")
+	island.plant(a, "flower", pinv)
+	var dirt_before: int = inv[Materials.DIRT]
+	check(island.remove(a, inv, pinv) == Materials.DIRT, "移除有植物的方塊")
+	check(inv[Materials.DIRT] == dirt_before + 1 and pinv["flower"] == 2, "方塊與植物都退回")
+	check(not island.plants.has(a), "植物跟著移除")
+
+
+# --- 褪色與恢復 -----------------------------------------------------------
+
+func test_fade_schedule() -> void:
+	var island := IslandData.new()
+	check(island.fade_on("2026-11-20") == 0.0, "從沒照顧過的新島不褪色")
+	island.care("2026-11-10")
+	# 11/10 照顧；11/11 起整天沒完成。漏 2 天（11/13）開始褪色，漏 5 天（11/16）全灰。
+	var expected := {"2026-11-10": 0.0, "2026-11-11": 0.0, "2026-11-12": 0.0,
+		"2026-11-13": 0.25, "2026-11-14": 0.5, "2026-11-15": 0.75, "2026-11-16": 1.0,
+		"2026-11-30": 1.0}
+	for d in expected:
+		check(is_equal_approx(island.fade_on(d), expected[d]),
+			"%s 褪色應為 %.2f（實際 %.2f）" % [d, expected[d], island.fade_on(d)])
+	check(IslandData.days_between("2026-12-31", "2027-01-01") == 1, "跨年天數")
+	check(IslandData.days_between("2026-03-07", "2026-03-09") == 2, "一般天數")
+
+
+func test_recovery_takes_three_days_and_pauses() -> void:
+	var island := IslandData.new()
+	island.care("2026-11-01")
+	check(island.fade_on("2026-11-10") == 1.0, "全灰")
+	island.care("2026-11-10")
+	check(is_equal_approx(island.fade_on("2026-11-10"), 2.0 / 3.0), "第 1 天恢復 1/3")
+	island.care("2026-11-10")
+	check(is_equal_approx(island.fade_on("2026-11-10"), 2.0 / 3.0), "同一天只算一次")
+	# 中斷一天：進度暫停，不增加褪色也不歸零
+	island.care("2026-11-12")
+	check(is_equal_approx(island.fade_on("2026-11-12"), 1.0 / 3.0), "隔一天再照顧，繼續恢復")
+	island.care("2026-11-13")
+	check(island.fade_on("2026-11-13") == 0.0, "第 3 天完全恢復")
+
+
+func test_fade_reduces_animal_capacity() -> void:
+	check(IslandData.animal_capacity(0.0) == 4, "全彩可住 4 隻")
+	check(IslandData.animal_capacity(0.5) == 2, "褪一半剩 2 隻")
+	check(IslandData.animal_capacity(1.0) == 0, "全灰全部離開")
+
+
+# --- 動物 ---------------------------------------------------------------
+
+func _island_with(types: Dictionary) -> IslandData:
+	var island := IslandData.new()
+	var inv := {Materials.DIRT: 99, Materials.WATER: 99, Materials.STONE: 99, Materials.SAND: 99}
+	for p in types:
+		island.place(p, types[p], inv)
+	return island
+
+
+func test_animals_need_habitat_and_come_one_at_a_time() -> void:
+	var island := IslandData.new()
+	check(island.try_visit(0.0, 0, _rng()) == "", "空島沒有動物會來")
+	island = _island_with({Vector3i(0, 0, 0): Materials.DIRT, Vector3i(1, 0, 0): Materials.DIRT,
+		Vector3i(5, 5, 0): Materials.WATER})
+	var first := island.try_visit(0.0, 0, _rng())
+	check(first == "sheep" or first == "fish", "有土或水才有綿羊或小魚")
+	check(island.animals.size() == 1, "一次只來一隻")
+	var second := island.try_visit(0.0, 0, _rng())
+	check(second != first and second != "", "第二次來另一種")
+	check(island.try_visit(0.0, 0, _rng()) == "", "沒有石頭和沙，蜥蜴和寄居蟹不會來")
+	for a in island.animals:
+		check(island.is_habitat(a.species, a.pos), "動物站在自己的棲地上")
+
+
+func test_animal_capacity_limits_visits_and_removes_extra() -> void:
+	var island := _island_with({Vector3i(0, 0, 0): Materials.DIRT, Vector3i(1, 0, 0): Materials.WATER,
+		Vector3i(2, 0, 0): Materials.STONE, Vector3i(3, 0, 0): Materials.SAND})
+	for i in 4:
+		island.try_visit(0.0, 0, _rng(i))
+	check(island.animals.size() == 4, "四種都來了")
+	check(island.update_animals(0.5, 0), "褪色時有動物離開")
+	check(island.animals.size() == 2, "褪一半剩 2 隻")
+	check(island.try_visit(0.5, 0, _rng()) == "", "容量滿了不會再來")
+	island.update_animals(1.0, 0)
+	check(island.animals.is_empty(), "全灰時動物全部離開")
+
+
+func test_animal_relocates_or_leaves_when_habitat_removed() -> void:
+	var island := _island_with({Vector3i(0, 0, 0): Materials.DIRT, Vector3i(5, 5, 0): Materials.DIRT})
+	var inv := Materials.empty_inventory()
+	island.try_visit(0.0, 0, _rng())
+	var sheep: Dictionary = island.animals[0]
+	var start: Vector3i = sheep.pos
+	island.remove(start, inv)
+	island.update_animals(0.0, 100)
+	check(sheep.pos != start and island.is_habitat("sheep", sheep.pos), "腳下方塊被移除，換到其他土上")
+	island.remove(sheep.pos, inv)
+	island.update_animals(0.0, 1000)
+	check(sheep.confused_since == 1000, "沒有棲地時冒問號")
+	island.update_animals(0.0, 1000 + IslandData.CONFUSED_LEAVE_SECONDS - 1)
+	check(island.animals.size() == 1, "不到一天還不會離開")
+	island.place(Vector3i(3, 3, 0), Materials.DIRT, {Materials.DIRT: 1})
+	island.update_animals(0.0, 1000 + IslandData.CONFUSED_LEAVE_SECONDS)
+	check(sheep.confused_since == 0 and sheep.pos == Vector3i(3, 3, 0), "棲地恢復後問號消失")
+	island.remove(Vector3i(3, 3, 0), inv)
+	island.update_animals(0.0, 5000)
+	island.update_animals(0.0, 5000 + IslandData.CONFUSED_LEAVE_SECONDS)
+	check(island.animals.is_empty(), "問號超過一天就離開")
+
+
+func test_covering_habitat_moves_animal() -> void:
+	var island := _island_with({Vector3i(0, 0, 0): Materials.SAND, Vector3i(4, 4, 0): Materials.SAND})
+	island.try_visit(0.0, 0, _rng())
+	var crab: Dictionary = island.animals[0]
+	var under: Vector3i = crab.pos
+	island.place(under + Vector3i(0, 0, 1), Materials.STONE, {Materials.STONE: 1})
+	island.update_animals(0.0, 0)
+	check(crab.pos != under, "方塊蓋在動物頭上時換位置")
+
+
+func test_wander_stays_on_habitat_nearby() -> void:
+	var types := {}
+	for x in 6:
+		for y in 6:
+			types[Vector3i(x, y, 0)] = Materials.DIRT if x < 3 else Materials.STONE
+	var island := _island_with(types)
+	island.try_visit(0.0, 0, _rng(1))
+	island.try_visit(0.0, 0, _rng(2))
+	var rng := _rng(3)
+	for step in 200:
+		var before := []
+		for a in island.animals:
+			before.append(a.pos)
+		island.wander(rng)
+		for i in island.animals.size():
+			var a: Dictionary = island.animals[i]
+			var d: Vector3i = a.pos - before[i]
+			check(island.is_habitat(a.species, a.pos), "漫步後仍在棲地上")
+			check(absi(d.x) <= 1 and absi(d.y) <= 1 and absi(d.z) <= 1, "每次只走到周圍一格")
+
+
+func test_island_v2_roundtrip() -> void:
+	var island := _island_with({Vector3i(0, 0, 0): Materials.DIRT, Vector3i(1, 0, 0): Materials.WATER})
+	var pinv := Catalog.empty_plant_inventory()
+	pinv["shrub"] = 1
+	island.plant(Vector3i(0, 0, 0), "shrub", pinv)
+	island.try_visit(0.0, 77, _rng())
+	island.care("2026-11-01")
+	island.fade_base = 0.25
+	var i2 := IslandData.from_dict(JSON.parse_string(JSON.stringify(island.to_dict())))
+	check(i2.plants == island.plants, "植物應相同")
+	check(i2.animals.size() == 1 and i2.animals[0].pos == island.animals[0].pos, "動物應相同")
+	check(i2.animals[0].species == island.animals[0].species, "物種應相同")
+	check(i2.last_care_date == "2026-11-01" and is_equal_approx(i2.fade_base, 0.25), "褪色狀態應保留")
+	check(i2.next_animal_id == island.next_animal_id, "動物編號應保留")
+
+
+func test_old_v1_island_save_still_loads() -> void:
+	var i := IslandData.from_dict({"version": 1, "id": 0, "blocks": [[1, 2, 0, "dirt"]]})
+	check(i.get_block(Vector3i(1, 2, 0)) == "dirt", "v0.1 存檔可讀")
+	check(i.animals.is_empty() and i.plants.is_empty() and i.fade_base == 0.0, "新欄位用預設值")
+
+
 # --- 存檔 ---------------------------------------------------------------
 
 func test_save_and_load_files() -> void:

@@ -44,6 +44,7 @@ func _ready() -> void:
 	_toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_toast.add_theme_color_override("font_color", Color("4f8a34"))
 	_toast.custom_minimum_size = Vector2(0, 40)
+	_toast.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(_toast)
 
 	var scroll := ScrollContainer.new()
@@ -71,13 +72,23 @@ func _complete(id: int) -> void:
 	var result := Game.complete_event(id)
 	if not result.ok:
 		return
+	var lines := []
+	var color := Color("4f8a34")
 	if result.capped:
-		_show_toast("今天的素材已經拿滿 %d 件了，明天再來！" % GameData.DAILY_LIMIT, Color("b07a2a"))
+		lines.append("今天的素材已經拿滿 %d 件了，明天再來！" % GameData.DAILY_LIMIT)
+		color = Color("b07a2a")
 	else:
 		var names := []
 		for t in result.rewards:
 			names.append(Materials.display_name(t))
-		_show_toast("獲得素材：" + "、".join(names), Color("4f8a34"))
+		var text := "獲得素材：" + "、".join(names)
+		if result.plant != "":
+			text += "，還有一株%s！" % Catalog.plant_name(result.plant)
+		lines.append(text)
+	if result.get("visitor", "") != "":
+		lines.append("%s來到你的島上了！" % Catalog.animal_name(result.visitor))
+	_show_toast("
+".join(lines), color)
 
 
 func _redo(title: String) -> void:
@@ -89,7 +100,7 @@ func _show_toast(text: String, color: Color) -> void:
 	_toast.add_theme_color_override("font_color", color)
 	_toast.modulate.a = 1.0
 	var tw := create_tween()
-	tw.tween_interval(2.0)
+	tw.tween_interval(2.5)
 	tw.tween_property(_toast, "modulate:a", 0.0, 0.8)
 
 
@@ -162,6 +173,8 @@ func _done_row(ev: Dictionary) -> Control:
 		for t in ev.rewards:
 			names.append(Materials.display_name(t))
 		reward_text = "".join(names)
+	if ev.plant != "":
+		reward_text += "＋" + Catalog.plant_name(ev.plant)
 	var r := UiKit.label(reward_text, 24)
 	r.add_theme_color_override("font_color", DONE_COLOR)
 	r.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
