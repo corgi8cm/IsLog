@@ -11,6 +11,14 @@ env:
   GODOT_VERSION: "4.7.2"
   GODOT_RELEASE: "4.7.2-stable"
 
+permissions:
+  contents: write
+
+# 同一分支／tag 的建置依序執行，避免兩次推送同時改「最新測試版」。
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-24.04
@@ -114,3 +122,33 @@ jobs:
           name: islog-v${{ steps.version.outputs.name }}-${{ steps.version.outputs.code }}-debug-apk
           path: build/*.apk
           retention-days: 30
+
+      # main 的每次建置：覆蓋固定的「最新測試版」預發布（tag: latest）。
+      - name: Publish latest test build
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --cleanup-tag --yes || true
+          gh release create latest build/*.apk \
+            --prerelease \
+            --target "$GITHUB_SHA" \
+            --title "最新測試版 v${{ steps.version.outputs.name }}（build ${{ steps.version.outputs.code }}）" \
+            --notes "main 分支最新建置的 debug APK，每次推送都會更新。
+
+          - 版本：v${{ steps.version.outputs.name }}（version code ${{ steps.version.outputs.code }}）
+          - Commit：${GITHUB_SHA::7}
+          - 下載下方 Assets 裡的 APK，直接在手機上安裝。"
+
+      # 推 v* tag：建立正式版本的 Release。
+      - name: Publish version release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" build/*.apk --clobber
+          else
+            gh release create "$TAG" build/*.apk --title "$TAG" --generate-notes
+          fi

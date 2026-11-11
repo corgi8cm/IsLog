@@ -36,7 +36,12 @@ godot --path . -s res://tests/screenshot.gd -- ./shots
 ## Android 建置（GitHub Actions）
 
 每次推到 `main`、推 `v*` tag 或手動執行 workflow，[Android build](.github/workflows/android.yml) 會跑測試並匯出 debug APK。
-到 repo 的 **Actions → Android build → 該次執行 → Artifacts** 下載 zip，解開後把 APK 傳到手機安裝（需允許「安裝未知來源應用程式」）。
+
+**下載**：到 [Releases](https://github.com/corgi8cm/IsLog/releases) 下載 APK，直接在手機上安裝（需允許「安裝未知來源應用程式」）。
+
+- **最新測試版**（[`latest`](https://github.com/corgi8cm/IsLog/releases/tag/latest)）：`main` 每次建置都會覆蓋更新。
+- **版本 Release**：推 `v*` tag（例如 `v0.1.1`）時建立，APK 附在該版本底下。
+- 每次建置的 APK 也會保留在 Actions 的 Artifacts 30 天。
 
 - `version/name` 取自 `project.godot` 的 `config/version`，`version/code` 用 workflow 的執行編號，新版可以直接覆蓋安裝。
 - 簽章：repo secret `ANDROID_DEBUG_KEYSTORE_BASE64`（debug keystore 的 base64，alias `androiddebugkey`、密碼 `android`）。
