@@ -96,6 +96,18 @@ func _run() -> void:
 	check(ev.done_date != "", "兩個子事件完成後母事件自動完成")
 	check(_find(events_page, func(n): return n is Label and n.text.begins_with("✓ 整理房間")) != null, "出現在今天完成")
 
+	# 拍照模式：隱藏介面與格線，返回後恢復（不測儲存，避免寫進電腦的圖片資料夾）
+	main.call("_show_page", 1)
+	page.call("set_photo_mode", true)
+	await _frames()
+	var top_bar: Control = main.get_child(1).get_child(0)
+	check(not top_bar.visible and view.photo_mode, "拍照模式隱藏上方列並關閉格線")
+	check(not (_find(page, func(n): return n is Button and n.text == "移除") as Control).is_visible_in_tree(), "工具列隱藏")
+	page.call("set_photo_mode", false)
+	await _frames()
+	check(top_bar.visible and not view.photo_mode, "返回後恢復")
+	main.call("_show_page", 0)
+
 	# 交換素材視窗
 	for t in Materials.TYPES:
 		game.data.inventory[t] = 0

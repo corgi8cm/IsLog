@@ -35,7 +35,12 @@ func _ready() -> void:
 		content.add_child(page)
 		_pages.append(page)
 
-	col.add_child(_build_tab_bar())
+	var tab_bar := _build_tab_bar()
+	col.add_child(tab_bar)
+	var top_bar: Control = col.get_child(0)
+	_pages[1].photo_mode_changed.connect(func(on: bool):
+		top_bar.visible = not on
+		tab_bar.visible = not on)
 
 	Game.changed.connect(_refresh)
 	_refresh()

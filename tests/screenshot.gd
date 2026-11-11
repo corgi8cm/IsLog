@@ -72,6 +72,11 @@ func _run() -> void:
 	game.tick()
 	page.view.zoom = 1.0
 	await _shot(out_dir, "island_faded.png")
+	page.view.zoom = 1.3
+	page.call("set_photo_mode", true)
+	await _shot(out_dir, "photo_mode.png")
+	page.call("set_photo_mode", false)
+	page.view.zoom = 1.0
 	# 從島嶼頁的「圖鑑」按鈕開啟（-s 腳本不能直接引用用到 Autoload 的類別）
 	main.call("_show_page", 1)
 	for b in main.find_children("*", "Button", true, false):

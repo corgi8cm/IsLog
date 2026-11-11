@@ -14,6 +14,13 @@ var _status: Label
 var _plant_row: HBoxContainer
 var _plant_scroll: ScrollContainer
 var _plant_choice := ""
+## 平常的操作介面（拍照模式時隱藏）。
+var _normal_ui: Array[Control] = []
+var _photo_ui: Control
+var _photo_buttons: Control
+var _photo_hint: Label
+
+signal photo_mode_changed(on: bool)
 
 
 func _ready() -> void:
@@ -46,6 +53,7 @@ func _ready() -> void:
 	cam_box.add_child(UiKit.button("縮小", func(): view.zoom_at(0.8, view.size * 0.5)))
 	cam_box.add_child(UiKit.button("置中", view.reset_view))
 	cam_box.add_child(UiKit.button("圖鑑", func(): Encyclopedia.open(_modal_host())))
+	cam_box.add_child(UiKit.button("拍照", set_photo_mode.bind(true)))
 
 	# 下方：素材與移除
 	var bottom := VBoxContainer.new()
@@ -97,8 +105,84 @@ func _ready() -> void:
 	_tool_buttons[REMOVE_MODE] = rm
 	_tool_buttons[_tool].button_pressed = true
 
+	_normal_ui = [layer_box, cam_box, bottom]
+	_build_photo_ui()
 	Game.changed.connect(_refresh)
 	_refresh()
+
+
+# --- 拍照模式 -------------------------------------------------------------
+
+func _build_photo_ui() -> void:
+	_photo_ui = Control.new()
+	_photo_ui.set_anchors_preset(PRESET_FULL_RECT)
+	_photo_ui.mouse_filter = MOUSE_FILTER_IGNORE
+	_photo_ui.visible = false
+	add_child(_photo_ui)
+	var stamp := UiKit.label("", 26)
+	stamp.name = "Stamp"
+	stamp.add_theme_color_override("font_color", Color(1, 1, 1, 0.95))
+	stamp.add_theme_color_override("font_shadow_color", Color(0.1, 0.2, 0.3, 0.45))
+	stamp.add_theme_constant_override("shadow_offset_x", 2)
+	stamp.add_theme_constant_override("shadow_offset_y", 2)
+	_photo_ui.add_child(stamp)
+	stamp.set_anchors_and_offsets_preset(PRESET_TOP_LEFT, PRESET_MODE_MINSIZE, 24)
+
+	var bottom := VBoxContainer.new()
+	bottom.add_theme_constant_override("separation", 8)
+	_photo_ui.add_child(bottom)
+	bottom.set_anchors_preset(PRESET_BOTTOM_WIDE)
+	bottom.grow_vertical = GROW_DIRECTION_BEGIN
+	bottom.offset_left = 16
+	bottom.offset_right = -16
+	bottom.offset_bottom = -16
+	_photo_hint = UiKit.label("拖曳、縮放、旋轉調整角度後按「儲存照片」", 22)
+	_photo_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_photo_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_photo_hint.add_theme_color_override("font_color", Color("36506b"))
+	bottom.add_child(_photo_hint)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	bottom.add_child(row)
+	for item in [["旋轉", func(): view.rotation_step += 1], ["儲存照片", _save_photo],
+			["返回", set_photo_mode.bind(false)]]:
+		var b := UiKit.button(item[0], item[1])
+		b.size_flags_horizontal = SIZE_EXPAND_FILL
+		b.custom_minimum_size = Vector2(0, 72)
+		row.add_child(b)
+	_photo_buttons = bottom
+
+
+func set_photo_mode(on: bool) -> void:
+	for c in _normal_ui:
+		c.visible = not on
+	_photo_ui.visible = on
+	view.photo_mode = on
+	(_photo_ui.get_node("Stamp") as Label).text = "空島事記　%s" % Game.today().replace("-", ".")
+	photo_mode_changed.emit(on)
+
+
+## 存成 PNG：先放手機的「圖片/Islog」資料夾，失敗時改存在遊戲資料夾。
+func _save_photo() -> void:
+	_photo_buttons.visible = false
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var image := get_viewport().get_texture().get_image()
+	_photo_buttons.visible = true
+	var file := "islog_%s.png" % Time.get_datetime_string_from_system().replace(":", "").replace("-", "").replace("T", "_")
+	var result := save_photo_image(image, file)
+	_photo_hint.text = ("已儲存到 " + result) if result != "" else "儲存失敗，請改用手機截圖"
+
+
+static func save_photo_image(image: Image, file: String) -> String:
+	for dir in [OS.get_system_dir(OS.SYSTEM_DIR_PICTURES).path_join("Islog"), "user://photos"]:
+		if dir.begins_with("/Islog") or dir == "Islog":
+			continue
+		DirAccess.make_dir_recursive_absolute(dir)
+		var path: String = dir.path_join(file)
+		if image.save_png(path) == OK:
+			return ProjectSettings.globalize_path(path)
+	return ""
 
 
 ## 對話框要蓋住整個畫面，所以開在主畫面上。

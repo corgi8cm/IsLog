@@ -23,6 +23,11 @@ var zoom := 1.0:
 	set(v):
 		zoom = clampf(v, MIN_ZOOM, MAX_ZOOM)
 		queue_redraw()
+## 拍照模式：不畫格線與外框，所有樓層都完整顯示。
+var photo_mode := false:
+	set(v):
+		photo_mode = v
+		queue_redraw()
 var pan := Vector2.ZERO:
 	set(v):
 		pan = v
@@ -233,7 +238,8 @@ func _draw() -> void:
 	draw_set_transform(_origin(), 0.0, Vector2(zoom, zoom))
 
 	var n := IslandData.SIZE
-	_draw_frame_back(n)
+	if not photo_mode:
+		_draw_frame_back(n)
 
 	# 繪製清單：[排序鍵, 種類(0 方塊, 1 植物, 2 動物), 高度, 資料...]
 	var below := []
@@ -258,11 +264,13 @@ func _draw() -> void:
 
 	for it in below:
 		_draw_item(it, 1.0)
-	_draw_layer_grid(n)
+	if not photo_mode:
+		_draw_layer_grid(n)
 	for it in upper:
-		_draw_item(it, 1.0 if it[2] == layer else ABOVE_ALPHA)
+		_draw_item(it, 1.0 if it[2] == layer or photo_mode else ABOVE_ALPHA)
 
-	_draw_frame_front(n)
+	if not photo_mode:
+		_draw_frame_front(n)
 	draw_set_transform(Vector2.ZERO)
 
 
