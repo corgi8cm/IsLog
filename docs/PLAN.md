@@ -84,7 +84,7 @@
 - **範圍**：只做備份與換機，不做多裝置同時同步（2026-11-12 確認）
 - **兩邊都有進度時**：列出這台手機與雲端的累計完成件數、島嶼數、最後完成日期，讓玩家選一份；被取代的本機存檔另外留一份備份
 
-### 上架前需要在 Google 那邊設定（由開發者本人操作）
+### 上架前需要在 Google 那邊設定（由開發者本人操作，詳細步驟見 [PLAY_CONSOLE_SETUP.md](PLAY_CONSOLE_SETUP.md)）
 
 1. 註冊 Google Play Console 開發者帳號（一次性費用）
 2. 在 Play Console 建立 App（套件名稱 `io.github.corgi8cm.islog`）
