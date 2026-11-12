@@ -14,6 +14,7 @@ config/name="空島事記"
 config/description="完成生活小事，蓋出屬於自己的空中花園島。"
 config/version="0.3.1"
 run/main_scene="res://scenes/main.tscn"
+config/icon="res://assets/icon/icon.svg"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 
 [autoload]
