@@ -67,6 +67,9 @@ func _process(delta: float) -> void:
 		alive[a.id] = true
 		var target := Vector3(a.pos.x, a.pos.y, a.pos.z)
 		var cur: Vector3 = _animal_draw_pos.get(a.id, target)
+		# 距離太遠（例如換了一座島）直接跳過去
+		if cur.distance_to(target) > 2.5:
+			cur = target
 		var moving := cur.distance_to(target) > 0.001
 		_animal_moving[a.id] = moving
 		any_moving = any_moving or moving

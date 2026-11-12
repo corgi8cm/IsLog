@@ -125,6 +125,23 @@ func _run() -> void:
 	await _frames()
 	check(_find(main, func(n): return n is Button and n.text == "交換") == null, "關閉視窗")
 
+	# 我的島：滿 100 件建立新島，再把第一座拿回來
+	main.call("_show_page", 1)
+	game.data.total_completed = 100
+	var first_blocks: int = game.island.block_count()
+	_button(page, "我的島").pressed.emit()
+	await _frames()
+	check(_find(main, func(n): return n is Label and n.text == "第 1 座島") != null, "列出第一座島")
+	_button(main, "建立新島（目前的島會收起來）").pressed.emit()
+	await _frames()
+	check(game.island.id == 1 and game.island.block_count() == 0, "建立並切到新島")
+	_button(page, "我的島").pressed.emit()
+	await _frames()
+	_button(main, "拿出來").pressed.emit()
+	await _frames()
+	check(game.island.id == 0 and game.island.block_count() == first_blocks, "拿回第一座島")
+	main.call("_show_page", 0)
+
 	await _tutorial_walkthrough(game, main)
 
 	_cleanup("user://ui_smoke")

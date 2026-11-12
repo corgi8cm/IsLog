@@ -241,6 +241,82 @@ func test_tutorial_steps_and_save() -> void:
 	check(GameData.from_dict({}).tutorial_step == Tutorial.Step.DONE, "舊存檔視為已完成引導")
 
 
+# --- 多島與封存 -----------------------------------------------------------
+
+func test_island_unlock_every_100() -> void:
+	var g := GameData.new()
+	check(g.islands_unlocked() == 1 and not g.can_create_island(), "一開始只有一座島")
+	check(g.events_to_next_island() == 100, "還差 100 件")
+	g.total_completed = 99
+	check(not g.can_create_island() and g.events_to_next_island() == 1, "99 件還差 1 件")
+	g.total_completed = 100
+	check(g.can_create_island(), "100 件解鎖第二座")
+	g.island_ids.append(1)
+	check(not g.can_create_island() and g.events_to_next_island() == 100, "用掉後要再 100 件")
+	g.total_completed = 250
+	check(g.islands_unlocked() == 3 and g.can_create_island(), "250 件可以有 3 座")
+
+
+func test_archive_freezes_fade_and_animals() -> void:
+	var island := IslandData.new()
+	island.care("2026-11-01")
+	island.animals.append({"id": 1, "species": "sheep", "pos": Vector3i.ZERO, "arrived": 0, "confused_since": 1000})
+	check(is_equal_approx(island.fade_on("2026-11-04"), 0.25), "封存前 11/04 褪色 25%")
+	island.archive("2026-11-04", 5000)
+	island.restore("2026-11-20", 5000 + 16 * 86400)
+	check(is_equal_approx(island.fade_on("2026-11-20"), 0.25), "封存 16 天後拿出來仍是 25%")
+	check(island.animals[0].confused_since == 1000 + 16 * 86400, "問號計時也往後推")
+	check(not island.archived, "拿出來後不是封存狀態")
+	var never := IslandData.new()
+	never.archive("2026-11-01", 0)
+	never.restore("2026-11-30", 0)
+	check(never.fade_on("2026-11-30") == 0.0, "從沒照顧過的島拿出來也不褪色")
+
+
+func test_island_name_and_archive_saved() -> void:
+	var island := IslandData.new()
+	island.id = 2
+	check(island.display_name() == "第 3 座島", "預設名稱")
+	island.name = "海邊"
+	island.archive("2026-11-12", 77)
+	var i2 := IslandData.from_dict(JSON.parse_string(JSON.stringify(island.to_dict())))
+	check(i2.display_name() == "海邊" and i2.archived and i2.archived_on == "2026-11-12" and i2.archived_at == 77, "名稱與封存狀態存讀檔")
+	var g := GameData.new()
+	g.island_ids = [0, 1]
+	g.current_island = 1
+	var g2 := GameData.from_dict(JSON.parse_string(JSON.stringify(g.to_dict())))
+	check(g2.island_ids == [0, 1] and g2.current_island == 1, "島嶼清單存讀檔")
+	check(GameData.from_dict({"island_ids": [0], "current_island": 5}).current_island == 0, "目前的島不在清單時改用第一座")
+
+
+func test_game_create_and_switch_islands() -> void:
+	var dir := "user://test_islands_%d" % Time.get_ticks_usec()
+	var game = load("res://scripts/game.gd").new()
+	game.save_root = dir
+	game.data.tutorial_step = Tutorial.Step.DONE
+	game.data.inventory[Materials.DIRT] = 5
+	game.place_block(Vector3i(1, 1, 0), Materials.DIRT)
+	check(not game.create_island(), "還沒滿 100 件不能建新島")
+	game.data.total_completed = 100
+	check(game.create_island(), "建立第二座島")
+	check(game.island.id == 1 and game.island.block_count() == 0, "切到空的新島")
+	var first = game.load_island(0)
+	check(first.archived and first.block_count() == 1, "第一座島已封存且保留方塊")
+	game.place_block(Vector3i(2, 2, 0), Materials.DIRT)
+	check(game.switch_island(0), "拿回第一座島")
+	check(game.island.id == 0 and not game.island.archived and game.island.has_block(Vector3i(1, 1, 0)), "第一座島回來了")
+	check(game.load_island(1).has_block(Vector3i(2, 2, 0)), "第二座島的方塊保留")
+	var summaries: Array = game.island_summaries()
+	check(summaries.size() == 2 and summaries[0].current and summaries[1].blocks == 1, "島嶼摘要")
+	var game2 = load("res://scripts/game.gd").new()
+	game2.save_root = dir
+	game2.load_game()
+	check(game2.island.id == 0 and game2.data.island_ids == [0, 1], "重新讀檔後在第一座島")
+	game.free()
+	game2.free()
+	_remove_dir(dir)
+
+
 func test_exchange_two_for_one() -> void:
 	var g := GameData.new()
 	g.inventory[Materials.DIRT] = 5

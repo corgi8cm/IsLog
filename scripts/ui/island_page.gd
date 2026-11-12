@@ -54,6 +54,7 @@ func _ready() -> void:
 	cam_box.add_child(UiKit.button("置中", view.reset_view))
 	cam_box.add_child(UiKit.button("圖鑑", func(): Encyclopedia.open(_modal_host())))
 	cam_box.add_child(UiKit.button("拍照", set_photo_mode.bind(true)))
+	cam_box.add_child(UiKit.button("我的島", func(): IslandsDialog.open(_modal_host())))
 
 	# 下方：素材與移除
 	var bottom := VBoxContainer.new()

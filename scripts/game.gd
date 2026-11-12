@@ -203,6 +203,55 @@ func _island_changed() -> void:
 	_commit()
 
 
+# --- 多島與封存 -----------------------------------------------------------
+
+## 每座島的摘要：{id, name, blocks, plants, animals, current}
+func island_summaries() -> Array:
+	var out := []
+	for island_id in data.island_ids:
+		var isl: IslandData = island if island_id == island.id else load_island(island_id)
+		out.append({"id": island_id, "name": isl.display_name(), "blocks": isl.block_count(),
+			"plants": isl.plants.size(), "animals": isl.animals.size(), "current": island_id == island.id})
+	return out
+
+
+func load_island(island_id: int) -> IslandData:
+	var d := _read_json(_island_path(island_id))
+	var isl := IslandData.from_dict(d) if not d.is_empty() else IslandData.new()
+	isl.id = island_id
+	return isl
+
+
+## 建立新島：目前的島自動封存。
+func create_island() -> bool:
+	if not data.can_create_island():
+		return false
+	var new_id: int = data.island_ids.max() + 1
+	data.island_ids.append(new_id)
+	_switch_to(IslandData.new(), new_id)
+	return true
+
+
+## 把封存的島拿出來，目前的島收起來。
+func switch_island(island_id: int) -> bool:
+	if island_id == island.id or not data.island_ids.has(island_id):
+		return false
+	var target := load_island(island_id)
+	target.restore(today(), now())
+	_switch_to(target, island_id)
+	return true
+
+
+func _switch_to(target: IslandData, island_id: int) -> void:
+	island.archive(today(), now())
+	DirAccess.make_dir_recursive_absolute(save_root.path_join(ISLAND_DIR))
+	_write_json(_island_path(island.id), island.to_dict())
+	target.id = island_id
+	island = target
+	data.current_island = island_id
+	_commit()
+
+
 # --- 新手引導 -------------------------------------------------------------
 
 ## 全新開始：天空中一塊灰色的土方塊，從引導第一步開始。
@@ -308,8 +357,11 @@ func load_game() -> void:
 		return
 	var d := _read_json(_save_path())
 	data = GameData.from_dict(d) if not d.is_empty() else GameData.new()
-	var i := _read_json(_island_path(0))
+	var i := _read_json(_island_path(data.current_island))
 	island = IslandData.from_dict(i) if not i.is_empty() else IslandData.new()
+	island.id = data.current_island
+	if island.archived:
+		island.restore(today(), now())
 	# 舊存檔沒有圖鑑：島上已經有的動物算來過
 	for a in island.animals:
 		if not data.seen_animals.has(a.species):

@@ -30,6 +30,11 @@ var animals: Array = []
 var next_animal_id := 1
 var last_care_date := ""
 var fade_base := 0.0
+var name := ""
+## 封存：收起來的島時間停止。記下封存當天與時間，拿出來時把褪色與動物的計時往後推。
+var archived := false
+var archived_on := ""
+var archived_at := 0
 
 
 static func in_bounds(p: Vector3i) -> bool:
@@ -158,6 +163,36 @@ func care(today: String) -> void:
 	if fade_base < 0.01:
 		fade_base = 0.0
 	last_care_date = today
+
+
+# --- 封存 ---------------------------------------------------------------
+
+func archive(today: String, now_unix: int) -> void:
+	if archived:
+		return
+	archived = true
+	archived_on = today
+	archived_at = now_unix
+
+
+## 拿出來：封存期間不算，褪色從封存當時的狀態繼續。
+func restore(today: String, now_unix: int) -> void:
+	if not archived:
+		return
+	var days := days_between(archived_on, today)
+	if last_care_date != "" and days > 0:
+		last_care_date = days_ago(last_care_date, -days)
+	var seconds := maxi(0, now_unix - archived_at)
+	for a in animals:
+		if a.confused_since != 0:
+			a.confused_since += seconds
+	archived = false
+	archived_on = ""
+	archived_at = 0
+
+
+func display_name() -> String:
+	return name if name != "" else "第 %d 座島" % (id + 1)
 
 
 # --- 動物 ---------------------------------------------------------------
@@ -354,6 +389,10 @@ func to_dict() -> Dictionary:
 		"next_animal_id": next_animal_id,
 		"last_care_date": last_care_date,
 		"fade_base": fade_base,
+		"name": name,
+		"archived": archived,
+		"archived_on": archived_on,
+		"archived_at": archived_at,
 	}
 
 
@@ -393,4 +432,8 @@ static func from_dict(d: Dictionary) -> IslandData:
 		island.next_animal_id = maxi(island.next_animal_id, a.id + 1)
 	island.last_care_date = str(d.get("last_care_date", ""))
 	island.fade_base = clampf(float(d.get("fade_base", 0.0)), 0.0, 1.0)
+	island.name = str(d.get("name", ""))
+	island.archived = bool(d.get("archived", false))
+	island.archived_on = str(d.get("archived_on", ""))
+	island.archived_at = int(d.get("archived_at", 0))
 	return island

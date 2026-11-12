@@ -30,6 +30,12 @@ var seen_animals: Dictionary = {}
 var tutorial_step: int = Tutorial.Step.DONE
 ## 已經顯示過的情境提示（第一次達到每日上限、第一次褪色……）。
 var tips_shown: Dictionary = {}
+## 多島：擁有的島嶼 id 與目前在蓋的那一座。
+var island_ids: Array = [0]
+var current_island := 0
+
+## 每完成幾件事件解鎖一座新島。
+const EVENTS_PER_ISLAND := 100
 
 
 func add_event(title: String, now_unix: int, subtask_titles: Array = []) -> Dictionary:
@@ -86,6 +92,20 @@ func rewards_left_on(date: String) -> int:
 	if is_pro:
 		return -1
 	return maxi(0, DAILY_LIMIT - completions_on(date))
+
+
+## 依累計完成件數可以擁有幾座島（第一座免費，之後每 100 件一座）。
+func islands_unlocked() -> int:
+	return 1 + total_completed / EVENTS_PER_ISLAND
+
+
+func can_create_island() -> bool:
+	return island_ids.size() < islands_unlocked()
+
+
+## 距離下一座島還差幾件。
+func events_to_next_island() -> int:
+	return EVENTS_PER_ISLAND * island_ids.size() - total_completed
 
 
 ## 素材交換：EXCHANGE_COST 個 from 換 1 個 to。
@@ -253,6 +273,8 @@ func to_dict() -> Dictionary:
 		"seen_animals": seen_animals.duplicate(),
 		"tutorial_step": tutorial_step,
 		"tips_shown": tips_shown.duplicate(),
+		"island_ids": island_ids.duplicate(),
+		"current_island": current_island,
 	}
 
 
@@ -314,6 +336,14 @@ static func from_dict(d: Dictionary) -> GameData:
 			if Catalog.is_animal(str(species)):
 				g.seen_animals[str(species)] = str(seen[species])
 	g.tutorial_step = clampi(int(d.get("tutorial_step", Tutorial.Step.DONE)), 0, Tutorial.Step.DONE)
+	var ids: Array = []
+	for raw_id in d.get("island_ids", [0]):
+		if not ids.has(int(raw_id)):
+			ids.append(int(raw_id))
+	g.island_ids = ids if not ids.is_empty() else [0]
+	g.current_island = int(d.get("current_island", g.island_ids[0]))
+	if not g.island_ids.has(g.current_island):
+		g.current_island = g.island_ids[0]
 	var tips = d.get("tips_shown", {})
 	if typeof(tips) == TYPE_DICTIONARY:
 		for k in tips:
