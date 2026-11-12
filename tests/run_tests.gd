@@ -317,6 +317,72 @@ func test_game_create_and_switch_islands() -> void:
 	_remove_dir(dir)
 
 
+# --- 自訂方塊 -------------------------------------------------------------
+
+func _px(c: Color) -> PackedColorArray:
+	var px := PackedColorArray()
+	px.resize(64)
+	px.fill(c)
+	return px
+
+
+func test_design_slots_and_quick_make() -> void:
+	var g := GameData.new()
+	check(g.design_slots() == 2 and g.events_to_next_slot() == 30, "一開始 2 格，30 件多一格")
+	var a := g.save_design(Materials.DIRT, _px(Color.RED), _px(Color.BLUE))
+	var b := g.save_design(Materials.STONE, _px(Color.WHITE), _px(Color.BLACK))
+	check(a > 0 and b > a, "存兩個設計")
+	check(g.save_design(Materials.SAND, _px(Color.RED), _px(Color.RED)) == -1, "設計格滿了")
+	g.total_completed = 30
+	check(g.can_add_design(), "30 件解鎖第 3 格")
+	check(g.save_design("gold", _px(Color.RED), _px(Color.RED)) == -1, "基礎類型要是四種素材之一")
+	check(g.save_design(Materials.DIRT, PackedColorArray(), _px(Color.RED)) == -1, "像素數量不對")
+	check(not g.make_custom(a), "沒有土不能製作")
+	g.inventory[Materials.DIRT] = 2
+	check(g.make_custom(a) and g.make_custom(a), "製作兩個")
+	check(g.inventory[Materials.DIRT] == 0 and g.inventory[CustomBlocks.type_of(a)] == 2, "每個消耗 1 個土")
+	check(not g.make_custom(999), "不存在的設計")
+
+
+func test_custom_block_inherits_base_function() -> void:
+	var g := GameData.new()
+	var id := g.save_design(Materials.DIRT, _px(Color.RED), _px(Color.BLUE))
+	var type := CustomBlocks.type_of(id)
+	g.inventory[type] = 2
+	var island := IslandData.new()
+	check(island.place(Vector3i(3, 3, 0), type, g.inventory), "放置自訂方塊")
+	check(g.inventory[type] == 1, "扣自訂方塊")
+	check(island.base_at(Vector3i(3, 3, 0)) == Materials.DIRT, "功能是土")
+	var pinv := {"flower": 1}
+	check(island.plant(Vector3i(3, 3, 0), "flower", pinv), "花可以種在自訂土上")
+	check(island.is_habitat("sheep", Vector3i(3, 3, 0)), "綿羊可以住在自訂土上")
+	check(Materials.display_name(type) == "自訂土", "名稱")
+	check(island.remove(Vector3i(3, 3, 0), g.inventory, pinv) == type and g.inventory[type] == 2, "移除退回自訂方塊")
+	check(not island.place(Vector3i(0, 0, 0), "custom:999", {"custom:999": 1}), "不存在的設計不能放")
+
+
+func test_custom_designs_saved() -> void:
+	var g := GameData.new()
+	var top := _px(Color("ff0000"))
+	top[5] = Color("00ff00")
+	var id := g.save_design(Materials.WATER, top, _px(Color("0000ff")))
+	var type := CustomBlocks.type_of(id)
+	g.inventory[type] = 3
+	var island := IslandData.new()
+	island.place(Vector3i(1, 1, 0), type, g.inventory)
+	var text_g := JSON.stringify(g.to_dict())
+	var text_i := JSON.stringify(island.to_dict())
+	CustomBlocks.set_designs([])
+	var g2 := GameData.from_dict(JSON.parse_string(text_g))
+	var i2 := IslandData.from_dict(JSON.parse_string(text_i))
+	var d := g2.find_design(id)
+	check(d.base == Materials.WATER and d.top[5].is_equal_approx(Color("00ff00")), "設計的像素存讀檔")
+	check(g2.inventory[type] == 2, "自訂方塊數量存讀檔")
+	check(i2.get_block(Vector3i(1, 1, 0)) == type, "島上的自訂方塊存讀檔")
+	check(g2.next_design_id == id + 1, "設計編號")
+	check(CustomBlocks.texture(type, CustomBlocks.FACE_TOP) != null, "可以產生貼圖")
+
+
 func test_exchange_two_for_one() -> void:
 	var g := GameData.new()
 	g.inventory[Materials.DIRT] = 5

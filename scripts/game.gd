@@ -74,6 +74,20 @@ func complete_event(id: int) -> Dictionary:
 	return result
 
 
+func save_design(base: String, top: PackedColorArray, side: PackedColorArray) -> int:
+	var design_id := data.save_design(base, top, side)
+	if design_id >= 0:
+		_commit()
+	return design_id
+
+
+func make_custom(design_id: int) -> bool:
+	var ok := data.make_custom(design_id)
+	if ok:
+		_commit()
+	return ok
+
+
 func exchange(from_type: String, to_type: String) -> bool:
 	var ok := data.exchange(from_type, to_type)
 	if ok:
@@ -257,6 +271,7 @@ func _switch_to(target: IslandData, island_id: int) -> void:
 ## 全新開始：天空中一塊灰色的土方塊，從引導第一步開始。
 func new_game() -> void:
 	data = GameData.new()
+	CustomBlocks.set_designs([])
 	data.tutorial_step = Tutorial.Step.INTRO
 	island = IslandData.new()
 	island.blocks[Vector3i(4, 4, 0)] = Materials.DIRT

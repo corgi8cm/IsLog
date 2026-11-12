@@ -352,6 +352,10 @@ func _draw_cube(rc: Vector2i, z: int, type: String, alpha: float) -> void:
 	var b2 := Iso.to_screen(x + 1, y + 1, z)
 	var b3 := Iso.to_screen(x, y + 1, z)
 
+	if CustomBlocks.is_custom(type):
+		_draw_custom_cube([t0, t1, t2, t3], [b1, b2, b3], type, alpha)
+		return
+
 	var top := _painter.col(Materials.top_color(type))
 	var side := _painter.col(Materials.side_color(type))
 	if type == Materials.WATER:
@@ -370,3 +374,27 @@ func _draw_cube(rc: Vector2i, z: int, type: String, alpha: float) -> void:
 	draw_polyline(PackedVector2Array([t0, t1, t2, t3, t0]), edge, -1.0)
 	draw_line(t2, b2, edge, -1.0)
 	draw_polyline(PackedVector2Array([t1, b1, b2, b3, t3]), edge, -1.0)
+
+
+## 自訂方塊：頂面與兩個看得到的側面貼上 8×8 像素圖，側面用明暗區分。
+func _draw_custom_cube(t: Array, b: Array, type: String, alpha: float) -> void:
+	var uv := PackedVector2Array([Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)])
+	var top_tex := CustomBlocks.texture(type, CustomBlocks.FACE_TOP)
+	var side_tex := CustomBlocks.texture(type, CustomBlocks.FACE_SIDE)
+	var faces := [
+		[PackedVector2Array([t[3], t[2], b[1], b[2]]), side_tex, 0.92],  # 左前
+		[PackedVector2Array([t[2], t[1], b[0], b[1]]), side_tex, 0.75],  # 右前
+		[PackedVector2Array([t[0], t[1], t[2], t[3]]), top_tex, 1.0],  # 頂面
+	]
+	var fade := _painter.fade
+	for f in faces:
+		var shade: float = f[2]
+		var c := Color(shade, shade, shade, alpha)
+		draw_polygon(f[0], PackedColorArray([c, c, c, c]), uv, f[1])
+		if fade > 0.0:
+			# 褪色：蓋一層灰
+			draw_colored_polygon(f[0], Color(0.72, 0.74, 0.76, fade * 0.85 * alpha))
+	var edge := Color(0, 0, 0, 0.25 * alpha)
+	draw_polyline(PackedVector2Array([t[0], t[1], t[2], t[3], t[0]]), edge, -1.0)
+	draw_polyline(PackedVector2Array([t[1], b[0], b[1], b[2], t[3]]), edge, -1.0)
+	draw_line(t[2], b[1], edge, -1.0)

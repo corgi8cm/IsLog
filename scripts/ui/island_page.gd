@@ -4,6 +4,7 @@ extends Control
 const IslandView := preload("res://scripts/ui/island_view.gd")
 const REMOVE_MODE := "remove"
 const PLANT_MODE := "plant"
+const CUSTOM_MODE := "custom"
 
 var view: IslandView
 var _layer_label: Label
@@ -13,6 +14,9 @@ var _tool := Materials.DIRT
 var _status: Label
 var _plant_row: HBoxContainer
 var _plant_scroll: ScrollContainer
+var _custom_row: HBoxContainer
+var _custom_scroll: ScrollContainer
+var _custom_choice := ""
 var _plant_choice := ""
 ## 平常的操作介面（拍照模式時隱藏）。
 var _normal_ui: Array[Control] = []
@@ -84,6 +88,13 @@ func _ready() -> void:
 	_plant_row = HBoxContainer.new()
 	_plant_row.add_theme_constant_override("separation", 8)
 	_plant_scroll.add_child(_plant_row)
+	_custom_scroll = ScrollContainer.new()
+	_custom_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_custom_scroll.custom_minimum_size = Vector2(0, 150)
+	bottom.add_child(_custom_scroll)
+	_custom_row = HBoxContainer.new()
+	_custom_row.add_theme_constant_override("separation", 8)
+	_custom_scroll.add_child(_custom_row)
 
 	var tools := HBoxContainer.new()
 	tools.add_theme_constant_override("separation", 6)
@@ -99,6 +110,11 @@ func _ready() -> void:
 	pl.pressed.connect(_select_tool.bind(PLANT_MODE))
 	tools.add_child(pl)
 	_tool_buttons[PLANT_MODE] = pl
+	var cu := UiKit.tool_button(group, Color("e1d5f5"))
+	cu.text = "自訂"
+	cu.pressed.connect(_select_tool.bind(CUSTOM_MODE))
+	tools.add_child(cu)
+	_tool_buttons[CUSTOM_MODE] = cu
 	var rm := UiKit.tool_button(group, Color("f2b8b5"))
 	rm.text = "移除"
 	rm.pressed.connect(_select_tool.bind(REMOVE_MODE))
@@ -215,20 +231,28 @@ func _on_cell_tapped(pos: Vector2) -> void:
 			_remove_at(_tapped_block(pos))
 		PLANT_MODE:
 			_plant_at(_tapped_block(pos))
+		CUSTOM_MODE:
+			if _custom_choice == "":
+				_flash("先設計一個方塊")
+			else:
+				_place_at(view.floor_cell_at(pos), _custom_choice)
 		_:
-			_place_at(view.floor_cell_at(pos))
+			_place_at(view.floor_cell_at(pos), _tool)
 
 
-func _place_at(cell: Vector3i) -> void:
-	match Game.island.place_problem(cell, _tool, Game.data.inventory):
+func _place_at(cell: Vector3i, type: String) -> void:
+	match Game.island.place_problem(cell, type, Game.data.inventory):
 		"":
-			Game.place_block(cell, _tool)
+			Game.place_block(cell, type)
 		"occupied":
 			_flash("這格已經有方塊了")
 		"plant_below":
 			_flash("下面種了植物，不能蓋住它")
 		"no_material":
-			_flash("%s不夠了，去完成一件小事吧" % Materials.display_name(_tool))
+			if CustomBlocks.is_custom(type):
+				_flash("這個方塊用完了，按「製作」用 1 個%s再做一個" % Materials.display_name(Materials.base_of(type)))
+			else:
+				_flash("%s不夠了，去完成一件小事吧" % Materials.display_name(type))
 
 
 func _plant_at(cell: Vector3i) -> void:
@@ -272,6 +296,7 @@ func _refresh() -> void:
 	for t in Materials.TYPES:
 		_tool_buttons[t].text = "%s %d" % [Materials.display_name(t), Game.data.inventory.get(t, 0)]
 	_refresh_plants()
+	_refresh_custom()
 	_refresh_status()
 
 
@@ -292,6 +317,47 @@ func _refresh_status() -> void:
 	_status.text = "
 ".join(lines)
 	_status.visible = not lines.is_empty()
+
+
+## 「我的方塊」：每個設計可以選來放置，按「製作」消耗 1 個基礎素材做一個。
+func _refresh_custom() -> void:
+	_custom_scroll.visible = _tool == CUSTOM_MODE
+	for c in _custom_row.get_children():
+		c.queue_free()
+	var designs: Array = Game.data.custom_designs
+	if not designs.is_empty() and not CustomBlocks.has(_custom_choice):
+		_custom_choice = CustomBlocks.type_of(designs[0].id)
+	var group := ButtonGroup.new()
+	for d in designs:
+		var type := CustomBlocks.type_of(d.id)
+		var col := VBoxContainer.new()
+		col.add_theme_constant_override("separation", 4)
+		_custom_row.add_child(col)
+		var b := UiKit.tool_button(group, Color("f4f8fb"))
+		b.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		b.custom_minimum_size = Vector2(100, 84)
+		b.button_pressed = type == _custom_choice
+		b.pressed.connect(func(): _custom_choice = type)
+		var preview := BlockDesigner.CubePreview.new()
+		preview.top_tex = CustomBlocks.texture(type, CustomBlocks.FACE_TOP)
+		preview.side_tex = CustomBlocks.texture(type, CustomBlocks.FACE_SIDE)
+		preview.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		preview.set_anchors_preset(PRESET_FULL_RECT)
+		preview.offset_right = -44
+		b.add_child(preview)
+		b.text = "×%d" % int(Game.data.inventory.get(type, 0))
+		b.alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		b.add_theme_font_size_override("font_size", 22)
+		b.custom_minimum_size = Vector2(130, 84)
+		col.add_child(b)
+		var make := UiKit.button("製作", func():
+			if not Game.make_custom(d.id):
+				_flash("%s不夠，沒辦法製作" % Materials.display_name(d.base)))
+		make.add_theme_font_size_override("font_size", 22)
+		col.add_child(make)
+	var add := UiKit.button("＋ 設計", func(): BlockDesigner.open(_modal_host()))
+	add.custom_minimum_size = Vector2(110, 84)
+	_custom_row.add_child(add)
 
 
 func _refresh_plants() -> void:

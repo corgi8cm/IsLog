@@ -35,16 +35,28 @@ static func is_valid(type: String) -> bool:
 	return TYPES.has(type)
 
 
+## 可以放到島上的種類：四種基礎素材或已存在的自訂方塊。
+static func is_placeable(type: String) -> bool:
+	return is_valid(type) or CustomBlocks.has(type)
+
+
+## 方塊的功能類型（自訂方塊回傳它的基礎類型）。
+static func base_of(type: String) -> String:
+	return CustomBlocks.base_of(type)
+
+
 static func display_name(type: String) -> String:
+	if CustomBlocks.is_custom(type):
+		return "自訂" + NAMES.get(base_of(type), "")
 	return NAMES.get(type, "?")
 
 
 static func top_color(type: String) -> Color:
-	return _top_colors.get(type, Color.MAGENTA)
+	return _top_colors.get(base_of(type), Color.MAGENTA)
 
 
 static func side_color(type: String) -> Color:
-	return _side_colors.get(type, Color.MAGENTA)
+	return _side_colors.get(base_of(type), Color.MAGENTA)
 
 
 ## 素材清單 → 「土×2、水、石」。

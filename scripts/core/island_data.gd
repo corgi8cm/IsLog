@@ -46,6 +46,11 @@ func get_block(p: Vector3i) -> String:
 	return blocks.get(p, "")
 
 
+## 方塊的功能類型（自訂方塊算它的基礎類型）；沒有方塊回傳空字串。
+func base_at(p: Vector3i) -> String:
+	return Materials.base_of(blocks.get(p, ""))
+
+
 func has_block(p: Vector3i) -> bool:
 	return blocks.has(p)
 
@@ -63,7 +68,7 @@ func is_top_open(p: Vector3i) -> bool:
 
 ## 放置方塊不行的原因；可以放則回傳空字串。
 func place_problem(p: Vector3i, type: String, inventory: Dictionary) -> String:
-	if not in_bounds(p) or not Materials.is_valid(type):
+	if not in_bounds(p) or not Materials.is_placeable(type):
 		return "out_of_bounds"
 	if blocks.has(p):
 		return "occupied"
@@ -103,7 +108,7 @@ func plant_problem(p: Vector3i, plant_id: String, plant_inventory: Dictionary) -
 		return "invalid"
 	if not blocks.has(p):
 		return "no_block"
-	if blocks[p] != Catalog.plant_base(plant_id):
+	if base_at(p) != Catalog.plant_base(plant_id):
 		return "wrong_base"
 	if plants.has(p):
 		return "occupied"
@@ -214,7 +219,7 @@ func condition_met(species: String, p: Vector3i) -> bool:
 	match cond[0]:
 		"near_block":
 			for q in nearby_cells(p):
-				if blocks.get(q, "") == cond[1]:
+				if base_at(q) == cond[1]:
 					return true
 			return false
 		"near_plant":
@@ -225,7 +230,7 @@ func condition_met(species: String, p: Vector3i) -> bool:
 		"grassland":
 			var n := 0
 			for q in nearby_cells(p):
-				if blocks.get(q, "") == Materials.DIRT and is_top_open(q):
+				if base_at(q) == Materials.DIRT and is_top_open(q):
 					n += 1
 			return n >= int(cond[1])
 		"stone_stack":
@@ -234,7 +239,7 @@ func condition_met(species: String, p: Vector3i) -> bool:
 				for dy in [-1, 0, 1]:
 					var run := 0
 					for z in SIZE:
-						if blocks.get(Vector3i(p.x + dx, p.y + dy, z), "") == Materials.STONE:
+						if base_at(Vector3i(p.x + dx, p.y + dy, z)) == Materials.STONE:
 							run += 1
 							if run >= int(cond[1]):
 								return true
@@ -249,13 +254,13 @@ func habitat_cells(species: String) -> Array:
 	var habitat := Catalog.animal_habitat(species)
 	var cells := []
 	for p in blocks:
-		if blocks[p] == habitat and is_top_open(p) and condition_met(species, p):
+		if base_at(p) == habitat and is_top_open(p) and condition_met(species, p):
 			cells.append(p)
 	return cells
 
 
 func is_habitat(species: String, p: Vector3i) -> bool:
-	return blocks.get(p, "") == Catalog.animal_habitat(species) and is_top_open(p) 		and condition_met(species, p)
+	return base_at(p) == Catalog.animal_habitat(species) and is_top_open(p) and condition_met(species, p)
 
 
 func species_count(species: String) -> int:
@@ -404,7 +409,7 @@ static func from_dict(d: Dictionary) -> IslandData:
 			continue
 		var p := Vector3i(int(raw[0]), int(raw[1]), int(raw[2]))
 		var type := str(raw[3])
-		if in_bounds(p) and Materials.is_valid(type):
+		if in_bounds(p) and Materials.is_placeable(type):
 			island.blocks[p] = type
 	for raw in d.get("plants", []):
 		if typeof(raw) != TYPE_ARRAY or raw.size() < 4:

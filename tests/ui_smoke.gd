@@ -142,10 +142,60 @@ func _run() -> void:
 	check(game.island.id == 0 and game.island.block_count() == first_blocks, "拿回第一座島")
 	main.call("_show_page", 0)
 
+	# 自訂方塊：設計 → 儲存 → 製作 → 放置
+	main.call("_show_page", 1)
+	game.data.inventory[Materials.STONE] = 2
+	page.call("_select_tool", "custom")
+	await _frames()
+	_button(page, "＋ 設計").pressed.emit()
+	await _frames()
+	_button(main, "石").pressed.emit()
+	await _frames()
+	var canvas: Control = _find(main, func(n): return n.get_script() != null and n.has_signal("painted"))
+	var corner: Vector2 = canvas.get_global_rect().position + Vector2(4, 4)
+	_mouse_button(corner, true)
+	await _frames(1)
+	var mm := InputEventMouseMotion.new()
+	mm.position = corner + Vector2(canvas.size.x - 8, 0)
+	mm.global_position = mm.position
+	mm.button_mask = MOUSE_BUTTON_MASK_LEFT
+	root.push_input(mm)
+	await _frames(1)
+	_mouse_button(mm.position, false)
+	await _frames()
+	var painted_row := 0
+	for x in 8:
+		if canvas.pixels[x].is_equal_approx(Color("7cc35a")):
+			painted_row += 1
+	check(painted_row >= 6, "拖曳連續上色（%d/8 格）" % painted_row)
+	_button(main, "儲存到「我的方塊」").pressed.emit()
+	await _frames()
+	check(game.data.custom_designs.size() == 1 and game.data.custom_designs[0].base == Materials.STONE, "存成石頭類的自訂方塊")
+	var ctype := CustomBlocks.type_of(game.data.custom_designs[0].id)
+	_button(page, "製作").pressed.emit()
+	await _frames()
+	check(game.data.inventory[ctype] == 1 and game.data.inventory[Materials.STONE] == 1, "製作消耗 1 個石頭")
+	# 選畫面上方的格子，避免被下方的工具列擋住
+	var spot := Vector3i(6, 1, 0)
+	view.layer = 0
+	_close_modals(main)
+	await _frames()
+	await _click(_cell_screen_pos(view, spot))
+	check(game.island.get_block(spot) == ctype, "點格子放置自訂方塊")
+	page.call("_select_tool", Materials.DIRT)
+	main.call("_show_page", 0)
+
 	await _tutorial_walkthrough(game, main)
 
 	_cleanup("user://ui_smoke")
 	quit(1 if _failures > 0 else 0)
+
+
+## 關掉對話框（例如「快滿 100 件」的小提示）。
+func _close_modals(main: Control) -> void:
+	for c in main.get_children():
+		if c is ColorRect and c.get_child_count() > 0 and c.get_child(0) is CenterContainer:
+			c.queue_free()
 
 
 func _button(node: Node, text: String) -> Button:

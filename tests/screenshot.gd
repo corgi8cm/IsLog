@@ -53,6 +53,27 @@ func _run() -> void:
 		if v != "":
 			game.data.seen_animals[v] = game.today()
 
+	# 自訂方塊：紅磚（石頭類）與花磚（土類）
+	var brick_top := PackedColorArray()
+	var brick_side := PackedColorArray()
+	for y in 8:
+		for x in 8:
+			var mortar := y % 4 == 3 or (x + (4 if (y / 4) % 2 else 0)) % 8 == 0
+			brick_top.append(Color("c0563f") if not mortar else Color("e8dccb"))
+			brick_side.append(Color("b04a35") if not mortar else Color("e0d2bf"))
+	var brick: int = game.save_design(Materials.STONE, brick_top, brick_side)
+	var flower_top := CustomBlocks.default_pixels(Materials.DIRT, CustomBlocks.FACE_TOP)
+	for i in [9, 14, 27, 36, 50, 53]:
+		flower_top[i] = Color("f48fb1")
+	var flowery: int = game.save_design(Materials.DIRT, flower_top, CustomBlocks.default_pixels(Materials.DIRT, CustomBlocks.FACE_SIDE))
+	for i in 6:
+		game.make_custom(brick)
+	for i in 3:
+		game.make_custom(flowery)
+	for p in [Vector3i(1, 3, 0), Vector3i(1, 4, 0), Vector3i(1, 5, 0), Vector3i(1, 4, 1), Vector3i(1, 5, 1)]:
+		game.place_block(p, CustomBlocks.type_of(brick))
+	game.place_block(Vector3i(5, 3, 1), CustomBlocks.type_of(flowery))
+
 	var main: Control = load("res://scenes/main.tscn").instantiate()
 	root.add_child(main)
 	main.get("_pages")[0].call("_toggle_subtasks", room.id)
@@ -66,7 +87,15 @@ func _run() -> void:
 	page.view.layer = 0
 	page.view.rotation_step = 0
 	page.view.zoom = 1.6
+	page.call("_select_tool", "custom")
 	await _shot(out_dir, "island_zoom.png")
+	for b in main.find_children("*", "Button", true, false):
+		if b.text == "＋ 設計":
+			b.pressed.emit()
+			break
+	await _shot(out_dir, "designer.png")
+	main.get_child(-1).queue_free()
+	page.call("_select_tool", Materials.DIRT)
 	# 模擬 4 天沒照顧：褪色一半
 	game.island.last_care_date = IslandData.days_ago(game.today(), 4)
 	game.tick()

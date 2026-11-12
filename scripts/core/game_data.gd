@@ -36,6 +36,61 @@ var current_island := 0
 
 ## 每完成幾件事件解鎖一座新島。
 const EVENTS_PER_ISLAND := 100
+## 自訂方塊設計格：一開始幾格、每完成幾件多一格（暫定，見企劃待決事項）。
+const BASE_DESIGN_SLOTS := 2
+const EVENTS_PER_DESIGN_SLOT := 30
+
+## 「我的方塊」：{id, base, top: PackedColorArray, side: PackedColorArray}
+## 做好的自訂方塊數量放在 inventory["custom:<id>"]。
+var custom_designs: Array = []
+var next_design_id := 1
+
+
+# --- 自訂方塊 -------------------------------------------------------------
+
+func design_slots() -> int:
+	return BASE_DESIGN_SLOTS + total_completed / EVENTS_PER_DESIGN_SLOT
+
+
+func can_add_design() -> bool:
+	return custom_designs.size() < design_slots()
+
+
+## 距離下一個設計格還差幾件。
+func events_to_next_slot() -> int:
+	return (total_completed / EVENTS_PER_DESIGN_SLOT + 1) * EVENTS_PER_DESIGN_SLOT - total_completed
+
+
+## 儲存新的設計（不需要取名）。回傳設計 id，沒有空的設計格則回傳 -1。
+func save_design(base: String, top: PackedColorArray, side: PackedColorArray) -> int:
+	if not can_add_design() or not Materials.is_valid(base):
+		return -1
+	if top.size() != CustomBlocks.SIZE * CustomBlocks.SIZE or side.size() != top.size():
+		return -1
+	var d := {"id": next_design_id, "base": base, "top": top, "side": side}
+	next_design_id += 1
+	custom_designs.append(d)
+	inventory[CustomBlocks.type_of(d.id)] = 0
+	CustomBlocks.set_designs(custom_designs)
+	return d.id
+
+
+## 快速製作：消耗 1 個基礎素材，做出 1 個自訂方塊。
+func make_custom(design_id: int) -> bool:
+	var d := find_design(design_id)
+	if d.is_empty() or int(inventory.get(d.base, 0)) <= 0:
+		return false
+	inventory[d.base] -= 1
+	var type := CustomBlocks.type_of(design_id)
+	inventory[type] = int(inventory.get(type, 0)) + 1
+	return true
+
+
+func find_design(design_id: int) -> Dictionary:
+	for d in custom_designs:
+		if d.id == design_id:
+			return d
+	return {}
 
 
 func add_event(title: String, now_unix: int, subtask_titles: Array = []) -> Dictionary:
@@ -275,6 +330,10 @@ func to_dict() -> Dictionary:
 		"tips_shown": tips_shown.duplicate(),
 		"island_ids": island_ids.duplicate(),
 		"current_island": current_island,
+		"custom_designs": custom_designs.map(func(d): return {
+			"id": d.id, "base": d.base,
+			"top": CustomBlocks.to_hex(d.top), "side": CustomBlocks.to_hex(d.side)}),
+		"next_design_id": next_design_id,
 	}
 
 
@@ -336,6 +395,20 @@ static func from_dict(d: Dictionary) -> GameData:
 			if Catalog.is_animal(str(species)):
 				g.seen_animals[str(species)] = str(seen[species])
 	g.tutorial_step = clampi(int(d.get("tutorial_step", Tutorial.Step.DONE)), 0, Tutorial.Step.DONE)
+	for raw in d.get("custom_designs", []):
+		if typeof(raw) != TYPE_DICTIONARY or not Materials.is_valid(str(raw.get("base", ""))):
+			continue
+		var base := str(raw.base)
+		g.custom_designs.append({"id": int(raw.get("id", 0)), "base": base,
+			"top": CustomBlocks.from_hex(raw.get("top"), base, CustomBlocks.FACE_TOP),
+			"side": CustomBlocks.from_hex(raw.get("side"), base, CustomBlocks.FACE_SIDE)})
+	g.next_design_id = int(d.get("next_design_id", 1))
+	for design in g.custom_designs:
+		g.next_design_id = maxi(g.next_design_id, design.id + 1)
+		var type := CustomBlocks.type_of(design.id)
+		g.inventory[type] = int(inv.get(type, 0))
+	# 讀島嶼之前要先知道有哪些自訂方塊
+	CustomBlocks.set_designs(g.custom_designs)
 	var ids: Array = []
 	for raw_id in d.get("island_ids", [0]):
 		if not ids.has(int(raw_id)):
