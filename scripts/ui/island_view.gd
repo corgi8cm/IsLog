@@ -292,8 +292,10 @@ func _draw_item(it: Array, alpha: float) -> void:
 			if a.species == "fish":
 				h -= 0.12
 			var bob := absf(sin(_time * 8.0 + a.id)) * 1.5 if _animal_moving.get(a.id, false) else 0.0
+			_painter.variant = a.get("variant", "")
 			_painter.animal(a.species, Iso.to_screen(rp.x + 0.5, rp.y + 0.5, h),
 				_animal_flip.get(a.id, false), a.confused_since != 0, bob)
+			_painter.variant = ""
 
 
 func _draw_layer_grid(n: int) -> void:

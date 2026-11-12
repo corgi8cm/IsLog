@@ -641,6 +641,36 @@ func test_animals_need_habitat_and_come_one_at_a_time() -> void:
 		check(island.is_habitat(a.species, a.pos), "動物站在自己的棲地上")
 
 
+func test_animal_variants_are_rare_and_saved() -> void:
+	for species in Catalog.animal_ids():
+		if species == "turtle":
+			check(Catalog.animal_variant(species) == "", "烏龜沒有其他毛色")
+		else:
+			check(Catalog.animal_variant(species) != "", "%s 有稀有毛色" % species)
+	var rare := 0
+	var total := 400
+	for i in total:
+		var island := _island_with({Vector3i(0, 0, 0): Materials.DIRT})
+		island.try_visit(0.0, 0, _rng(i))
+		var v: String = island.animals[0].variant
+		check(v == "" or v == "black", "綿羊只會是原本或黑毛")
+		if v != "":
+			rare += 1
+	check(rare > 0 and rare < total * 0.2, "稀有毛色比較少見（%d / %d）" % [rare, total])
+	var island := _island_with({Vector3i(0, 0, 0): Materials.DIRT, Vector3i(2, 0, 0): Materials.DIRT})
+	island.try_visit(0.0, 0, _rng())
+	island.try_visit(0.0, 0, _rng(1))
+	island.animals[0].variant = "black"
+	island.animals[1].variant = ""
+	var back := IslandData.from_dict(island.to_dict())
+	check(back.animals[0].variant == "black" and back.animals[1].variant == "", "毛色會存檔")
+	var d := island.to_dict()
+	d.animals[0].variant = "mallard"
+	d.animals[1].erase("variant")
+	back = IslandData.from_dict(d)
+	check(back.animals[0].variant == "" and back.animals[1].variant == "", "不認得或舊存檔沒有毛色時用原本的樣子")
+
+
 func test_animal_capacity_limits_visits_and_removes_extra() -> void:
 	# 方塊彼此分開，只有四種基本動物符合條件
 	var island := _island_with({Vector3i(0, 0, 0): Materials.DIRT, Vector3i(3, 0, 0): Materials.WATER,

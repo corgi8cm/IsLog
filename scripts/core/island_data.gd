@@ -297,10 +297,15 @@ func try_visit(fade: float, now_unix: int, rng: RandomNumberGenerator, seen: Dic
 	var free := cells.filter(func(c): return not _animal_at(c, -1))
 	if not free.is_empty():
 		cells = free
+	var pos: Vector3i = cells[rng.randi_range(0, cells.size() - 1)]
+	var variant := ""
+	if Catalog.animal_variant(species) != "" and rng.randf() < Catalog.VARIANT_CHANCE:
+		variant = Catalog.animal_variant(species)
 	animals.append({
 		"id": next_animal_id,
 		"species": species,
-		"pos": cells[rng.randi_range(0, cells.size() - 1)],
+		"variant": variant,
+		"pos": pos,
 		"arrived": now_unix,
 		"confused_since": 0,
 	})
@@ -380,7 +385,7 @@ func to_dict() -> Dictionary:
 	var animal_list := []
 	for a in animals:
 		animal_list.append({
-			"id": a.id, "species": a.species,
+			"id": a.id, "species": a.species, "variant": a.get("variant", ""),
 			"pos": [a.pos.x, a.pos.y, a.pos.z],
 			"arrived": a.arrived, "confused_since": a.confused_since,
 		})
@@ -425,9 +430,13 @@ static func from_dict(d: Dictionary) -> IslandData:
 		var pos: Array = raw.get("pos", [])
 		if not Catalog.is_animal(species) or pos.size() < 3:
 			continue
+		var variant := str(raw.get("variant", ""))
+		if not Catalog.is_valid_variant(species, variant):
+			variant = ""
 		island.animals.append({
 			"id": int(raw.get("id", 0)),
 			"species": species,
+			"variant": variant,
 			"pos": Vector3i(int(pos[0]), int(pos[1]), int(pos[2])),
 			"arrived": int(raw.get("arrived", 0)),
 			"confused_since": int(raw.get("confused_since", 0)),

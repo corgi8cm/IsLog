@@ -8,6 +8,8 @@ var fade := 0.0
 var alpha := 1.0
 ## 剪影模式：圖鑑裡還沒來過的動物只畫出深色輪廓。
 var silhouette := false
+## 同一種動物的不同毛色（""＝原本的樣子）。
+var variant := ""
 
 
 func _init(canvas: CanvasItem) -> void:
@@ -159,49 +161,72 @@ func animal(species: String, at: Vector2, flip: bool, confused: bool, bob: float
 	match species:
 		"sheep":
 			ellipse(at + Vector2(0, 1), 10, 4, Color(0, 0, 0, 0.15))
+			# 黑毛白臉：毛和臉的顏色對調
+			var black := variant == "black"
+			var wool := Color("4a4545") if black else Color("fafafa")
+			var face := Color("f3ece2") if black else Color("3d3d3d")
+			var legs := Color("6b6460") if black else Color("4a4a4a")
 			for x in [-5, 4]:
-				line(p + Vector2(x * s, -2), p + Vector2(x * s, 1), Color("4a4a4a"), 2)
+				line(p + Vector2(x * s, -2), p + Vector2(x * s, 1), legs, 2)
 			for o in [Vector2(-5, -8), Vector2(0, -10), Vector2(5, -8), Vector2(-2, -6), Vector2(3, -6)]:
-				circle(p + Vector2(o.x * s, o.y), 5, Color("fafafa"))
+				circle(p + Vector2(o.x * s, o.y), 5, wool)
 			# 耳朵往後下垂，耳根被頭蓋住
-			tilted_ellipse(p + Vector2(5.3 * s, -9.0), 3.0, 1.3, 0.55, s, Color("3d3d3d"))
+			tilted_ellipse(p + Vector2(5.3 * s, -9.0), 3.0, 1.3, 0.55, s, face)
 			tilted_ellipse(p + Vector2(4.2 * s, -8.3), 1.1, 0.45, 0.55, s, Color("f4b6c2"))
-			ellipse(p + Vector2(9 * s, -9), 3.6, 3, Color("3d3d3d"))
-			circle(p + Vector2(10 * s, -10), 0.9, Color.WHITE)
+			ellipse(p + Vector2(9 * s, -9), 3.6, 3, face)
+			if black:
+				circle(p + Vector2(10 * s, -10), 0.8, Color("263238"))
+			else:
+				circle(p + Vector2(10 * s, -10), 0.9, Color.WHITE)
 		"fish":
 			var body := p + Vector2(0, 2)
-			ellipse(body, 7, 3.5, Color("ff8a3d"))
+			var red := variant == "red"
+			ellipse(body, 7, 3.5, Color("e53935") if red else Color("ff8a3d"))
 			poly(PackedVector2Array([body + Vector2(-6 * s, 0), body + Vector2(-11 * s, -4),
-				body + Vector2(-11 * s, 4)]), Color("ff7043"))
+				body + Vector2(-11 * s, 4)]), Color("c62828") if red else Color("ff7043"))
+			if red:
+				ellipse(body + Vector2(1 * s, -1.5), 3, 1, Color("ff8a80"))
 			circle(body + Vector2(3.5 * s, -0.8), 1, Color("263238"))
 		"lizard":
 			ellipse(at + Vector2(0, 1), 9, 3, Color(0, 0, 0, 0.15))
 			var tail := PackedVector2Array([p + Vector2(-5 * s, -2), p + Vector2(-10 * s, 0),
 				p + Vector2(-14 * s, -1)])
-			ci.draw_polyline(tail, col(Color("7cb342")), 2.0, true)
+			var blue := variant == "blue"
+			var skin := Color("4fa3e0") if blue else Color("8bc34a")
+			ci.draw_polyline(tail, col(Color("3d86c6") if blue else Color("7cb342")), 2.0, true)
 			for x in [-3, 3]:
-				line(p + Vector2(x * s, -2), p + Vector2((x + 1.5) * s, 1), Color("558b2f"), 1.5)
-			ellipse(p + Vector2(0, -3), 6, 2.6, Color("8bc34a"))
-			ellipse(p + Vector2(6 * s, -3.5), 3, 2.2, Color("8bc34a"))
+				line(p + Vector2(x * s, -2), p + Vector2((x + 1.5) * s, 1), Color("2f6fa8") if blue else Color("558b2f"), 1.5)
+			ellipse(p + Vector2(0, -3), 6, 2.6, skin)
+			ellipse(p + Vector2(6 * s, -3.5), 3, 2.2, skin)
+			if blue:
+				for x in [-2.5, 0.5, 3.0]:
+					circle(p + Vector2(x * s, -4), 0.7, Color("bfe4ff"))
 			circle(p + Vector2(7 * s, -4.2), 0.8, Color("263238"))
 		"hermit_crab":
 			ellipse(at + Vector2(0, 1), 8, 3, Color(0, 0, 0, 0.15))
 			for x in [-2, 2, 5]:
 				line(p + Vector2(x * s, -2), p + Vector2((x + 2) * s, 1), Color("e64a19"), 1.4)
-			circle(p + Vector2(-2 * s, -6), 6, Color("d7a86e"))
-			circle(p + Vector2(-2 * s, -6), 3.5, Color("c28e52"))
-			circle(p + Vector2(-2 * s, -6), 1.5, Color("a87440"))
+			var pink := variant == "pink"
+			circle(p + Vector2(-2 * s, -6), 6, Color("f6b8c8") if pink else Color("d7a86e"))
+			circle(p + Vector2(-2 * s, -6), 3.5, Color("ec95ab") if pink else Color("c28e52"))
+			circle(p + Vector2(-2 * s, -6), 1.5, Color("d97790") if pink else Color("a87440"))
 			circle(p + Vector2(5 * s, -3), 2.6, Color("ef5350"))
 			circle(p + Vector2(7 * s, -6), 1, Color("263238"))
 		"rabbit":
 			ellipse(at + Vector2(0, 1), 8, 3, Color(0, 0, 0, 0.15))
-			ellipse(p + Vector2(-1 * s, -5), 6, 4.5, Color("f5efe6"))
-			circle(p + Vector2(-6 * s, -6), 2.4, Color.WHITE)
-			circle(p + Vector2(5 * s, -9), 3.6, Color("f5efe6"))
-			ellipse(p + Vector2(4 * s, -16), 1.4, 4.5, Color("f5efe6"))
-			ellipse(p + Vector2(7 * s, -15.5), 1.4, 4.5, Color("f5efe6"))
+			var black := variant == "black"
+			var fur := Color("3e3a3a") if black else Color("f5efe6")
+			ellipse(p + Vector2(-1 * s, -5), 6, 4.5, fur)
+			circle(p + Vector2(-6 * s, -6), 2.4, Color("5a5454") if black else Color.WHITE)
+			circle(p + Vector2(5 * s, -9), 3.6, fur)
+			ellipse(p + Vector2(4 * s, -16), 1.4, 4.5, fur)
+			ellipse(p + Vector2(7 * s, -15.5), 1.4, 4.5, fur)
 			ellipse(p + Vector2(4 * s, -16), 0.6, 3, Color("f4b6c2"))
-			circle(p + Vector2(7 * s, -9.5), 0.9, Color("263238"))
+			if black:
+				circle(p + Vector2(7 * s, -9.5), 1.0, Color("111111"))
+				circle(p + Vector2(7.3 * s, -9.9), 0.4, Color.WHITE)
+			else:
+				circle(p + Vector2(7 * s, -9.5), 0.9, Color("263238"))
 		"corgi":
 			ellipse(at + Vector2(0, 1), 12, 4, Color(0, 0, 0, 0.15))
 			_corgi(p, s)
@@ -215,32 +240,53 @@ func animal(species: String, at: Vector2, flip: bool, confused: bool, bob: float
 			circle(body + Vector2(9 * s, -1.6), 0.7, Color("263238"))
 		"duck":
 			var body := p + Vector2(0, 1)
-			ellipse(body + Vector2(0, -3), 7, 4, Color("fafafa"))
-			poly(PackedVector2Array([body + Vector2(-6 * s, -4), body + Vector2(-10 * s, -7),
-				body + Vector2(-7 * s, -2)]), Color("eeeeee"))
-			circle(body + Vector2(5 * s, -9), 3.4, Color("fafafa"))
-			poly(PackedVector2Array([body + Vector2(7.5 * s, -9.5), body + Vector2(11 * s, -8.5),
-				body + Vector2(7.5 * s, -7.5)]), Color("ffa726"))
-			circle(body + Vector2(6 * s, -10), 0.8, Color("263238"))
+			if variant == "mallard":
+				# 綠頭鴨：灰身體、棕胸口、白頸圈、綠頭、黃嘴
+				ellipse(body + Vector2(0, -3), 7, 4, Color("cfcac2"))
+				ellipse(body + Vector2(4 * s, -3.5), 3.4, 3, Color("8d5a3b"))
+				ellipse(body + Vector2(-1.5 * s, -4), 4, 2, Color("a59b8f"))
+				poly(PackedVector2Array([body + Vector2(-6 * s, -4), body + Vector2(-10 * s, -7),
+					body + Vector2(-7 * s, -2)]), Color("37474f"))
+				circle(body + Vector2(5 * s, -6.2), 2.2, Color("fafafa"))
+				circle(body + Vector2(5 * s, -9), 3.4, Color("2e7d32"))
+				ellipse(body + Vector2(4.2 * s, -10.2), 1.6, 1.1, Color("43a047"))
+				poly(PackedVector2Array([body + Vector2(7.5 * s, -9.5), body + Vector2(11 * s, -8.5),
+					body + Vector2(7.5 * s, -7.5)]), Color("f2c94c"))
+				circle(body + Vector2(6 * s, -10), 0.8, Color("111111"))
+			else:
+				ellipse(body + Vector2(0, -3), 7, 4, Color("fafafa"))
+				poly(PackedVector2Array([body + Vector2(-6 * s, -4), body + Vector2(-10 * s, -7),
+					body + Vector2(-7 * s, -2)]), Color("eeeeee"))
+				circle(body + Vector2(5 * s, -9), 3.4, Color("fafafa"))
+				poly(PackedVector2Array([body + Vector2(7.5 * s, -9.5), body + Vector2(11 * s, -8.5),
+					body + Vector2(7.5 * s, -7.5)]), Color("ffa726"))
+				circle(body + Vector2(6 * s, -10), 0.8, Color("263238"))
 		"goat":
 			ellipse(at + Vector2(0, 1), 10, 4, Color(0, 0, 0, 0.15))
 			for x in [-5, -2, 3, 6]:
 				line(p + Vector2(x * s, -3), p + Vector2(x * s, 1), Color("5d4a3a"), 1.8)
-			ellipse(p + Vector2(0, -7), 8, 4.5, Color("ece7df"))
-			ellipse(p + Vector2(8 * s, -11), 3, 3.6, Color("ece7df"))
+			var brown := variant == "brown"
+			var coat := Color("9a6a45") if brown else Color("ece7df")
+			ellipse(p + Vector2(0, -7), 8, 4.5, coat)
+			ellipse(p + Vector2(8 * s, -11), 3, 3.6, coat)
+			if brown:
+				ellipse(p + Vector2(9.2 * s, -9.8), 1.6, 1.4, Color("f0e4d4"))
 			ci.draw_polyline(PackedVector2Array([p + Vector2(7 * s, -14), p + Vector2(5 * s, -18),
 				p + Vector2(3 * s, -17)]), col(Color("8d7b68")), 1.8, true)
-			line(p + Vector2(9 * s, -8), p + Vector2(9 * s, -5), Color("cfc6b8"), 1.6)
+			line(p + Vector2(9 * s, -8), p + Vector2(9 * s, -5), Color("6e4a30") if brown else Color("cfc6b8"), 1.6)
 			circle(p + Vector2(9 * s, -11.5), 0.8, Color("263238"))
 		"crab":
 			ellipse(at + Vector2(0, 1), 9, 3, Color(0, 0, 0, 0.15))
+			var blue := variant == "blue"
+			var shell := Color("3f7fd0") if blue else Color("e53935")
+			var dark := Color("2c5ea3") if blue else Color("c62828")
 			for x in [-6, -4, 4, 6]:
-				line(p + Vector2(x, -2), p + Vector2(x * 1.4, 1), Color("c62828"), 1.4)
-			ellipse(p + Vector2(0, -4), 7, 4, Color("e53935"))
+				line(p + Vector2(x, -2), p + Vector2(x * 1.4, 1), dark, 1.4)
+			ellipse(p + Vector2(0, -4), 7, 4, shell)
 			for x in [-1, 1]:
-				line(p + Vector2(x * 5, -6), p + Vector2(x * 9, -10), Color("e53935"), 1.6)
-				circle(p + Vector2(x * 10, -11), 2.6, Color("ef5350"))
-				line(p + Vector2(x * 2, -7), p + Vector2(x * 2, -10), Color("c62828"), 1)
+				line(p + Vector2(x * 5, -6), p + Vector2(x * 9, -10), shell, 1.6)
+				circle(p + Vector2(x * 10, -11), 2.6, Color("ffa64d") if blue else Color("ef5350"))
+				line(p + Vector2(x * 2, -7), p + Vector2(x * 2, -10), dark, 1)
 				circle(p + Vector2(x * 2, -10.5), 1, Color("263238"))
 	if confused:
 		var b := at + Vector2(0, -30)
@@ -259,6 +305,7 @@ const CORGI_DARK := Color("c97a2e")
 const CORGI_CREAM := Color("fff6e8")
 const CORGI_OUTLINE := Color("2b3a4a")
 const CORGI_PINK := Color("f4a3a3")
+const CORGI_BLACK := Color("3a3434")
 
 var _cp := Vector2.ZERO
 var _cs := 1.0
@@ -322,12 +369,16 @@ func _corgi(p: Vector2, s: float) -> void:
 	_cs = s
 	# 身體、肚子、腳、尾巴
 	_c_capsule(50, 380, 335, 85, CORGI_ORANGE, true)
+	if variant == "tricolor":
+		# 三色柯基：背上一片黑毛，邊緣留一圈橘色
+		_c_capsule(70, 330, 300, 52, CORGI_BLACK)
 	_c_capsule(90, 350, 395, 25, CORGI_CREAM)
 	_c_ellipse(130, 420, 34, 18, CORGI_CREAM, true)
 	_c_ellipse(310, 420, 34, 18, CORGI_CREAM, true)
-	_c_ellipse(50, 300, 26, 22, CORGI_ORANGE, true)
+	_c_ellipse(50, 300, 26, 22, CORGI_BLACK if variant == "tricolor" else CORGI_ORANGE, true)
 	# 耳朵（耳根被頭蓋住）
-	_c_ear(Vector2(298, 230), Vector2(308, 140), Vector2(354, 210), CORGI_DARK, true)
+	_c_ear(Vector2(298, 230), Vector2(308, 140), Vector2(354, 210),
+		CORGI_BLACK if variant == "tricolor" else CORGI_DARK, true)
 	_c_ear(Vector2(330, 220), Vector2(364, 130), Vector2(402, 218), CORGI_ORANGE, true)
 	# 頭
 	_c_ellipse(360, 260, 72, 64, CORGI_ORANGE, true)
