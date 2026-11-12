@@ -52,6 +52,11 @@ func _run() -> void:
 		var v: String = game.island.try_visit(0.0, game.now(), game.rng, game.data.seen_animals)
 		if v != "":
 			game.data.seen_animals[v] = game.today()
+	# 一定要有柯基（看兩個方向的畫法）
+	for pos in [Vector3i(6, 2, 0), Vector3i(2, 7, 0)]:
+		if game.island.species_count("corgi") < IslandData.MAX_PER_SPECIES:
+			game.island.animals.append({"id": 900 + pos.x, "species": "corgi", "pos": pos, "arrived": game.now(), "confused_since": 0})
+	game.data.seen_animals["corgi"] = game.today()
 
 	# 自訂方塊：紅磚（石頭類）與花磚（土類）
 	var brick_top := PackedColorArray()
@@ -89,6 +94,9 @@ func _run() -> void:
 	page.view.zoom = 1.6
 	page.call("_select_tool", "custom")
 	await _shot(out_dir, "island_zoom.png")
+	page.view.zoom = 3.0
+	await _shot(out_dir, "island_zoom3.png")
+	page.view.zoom = 1.6
 	for b in main.find_children("*", "Button", true, false):
 		if b.text == "＋ 設計":
 			b.pressed.emit()

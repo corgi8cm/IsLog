@@ -190,19 +190,8 @@ func animal(species: String, at: Vector2, flip: bool, confused: bool, bob: float
 			ellipse(p + Vector2(4 * s, -16), 0.6, 3, Color("f4b6c2"))
 			circle(p + Vector2(7 * s, -9.5), 0.9, Color("263238"))
 		"corgi":
-			ellipse(at + Vector2(0, 1), 11, 4, Color(0, 0, 0, 0.15))
-			for x in [-6, -3, 3, 6]:
-				line(p + Vector2(x * s, -3), p + Vector2(x * s, 0), Color("d9893b"), 2.2)
-			ellipse(p + Vector2(0, -6), 9, 4.5, Color("e9963f"))
-			ellipse(p + Vector2(0, -4), 7, 2.4, Color("fff6e8"))
-			circle(p + Vector2(9 * s, -9), 4, Color("e9963f"))
-			ellipse(p + Vector2(11 * s, -7.5), 2.6, 1.6, Color("fff6e8"))
-			poly(PackedVector2Array([p + Vector2(6 * s, -12), p + Vector2(7 * s, -17),
-				p + Vector2(9 * s, -12)]), Color("d9893b"))
-			poly(PackedVector2Array([p + Vector2(9.5 * s, -12), p + Vector2(12 * s, -16.5),
-				p + Vector2(12 * s, -11)]), Color("d9893b"))
-			circle(p + Vector2(10 * s, -9.5), 0.9, Color("263238"))
-			circle(p + Vector2(-9 * s, -7), 2.2, Color("e9963f"))
+			ellipse(at + Vector2(0, 1), 12, 4, Color(0, 0, 0, 0.15))
+			_corgi(p, s)
 		"turtle":
 			var body := p + Vector2(0, 1)
 			for o in [Vector2(-6, 1), Vector2(6, 1), Vector2(-5, -2), Vector2(5, -2)]:
@@ -245,3 +234,98 @@ func animal(species: String, at: Vector2, flip: bool, confused: bool, bob: float
 		circle(b, 7, Color(1, 1, 1, 0.95))
 		var font := ThemeDB.fallback_font
 		ci.draw_string(font, b + Vector2(-3.5, 4.5), "?", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, col(Color("e65100")))
+
+
+# --- 柯基（吐司趴姿、側臉、張嘴笑）-------------------------------------------
+# 座標沿用圖示原稿（512×512），(255, 438) 是腳底中心，再縮小成遊戲裡的大小。
+
+const CORGI_SCALE := 0.05
+const CORGI_LINE := 0.45
+const CORGI_ORANGE := Color("e9963f")
+const CORGI_DARK := Color("c97a2e")
+const CORGI_CREAM := Color("fff6e8")
+const CORGI_OUTLINE := Color("2b3a4a")
+const CORGI_PINK := Color("f4a3a3")
+
+var _cp := Vector2.ZERO
+var _cs := 1.0
+
+
+func _q(x: float, y: float) -> Vector2:
+	return _cp + Vector2((x - 255.0) * CORGI_SCALE * _cs, (y - 438.0) * CORGI_SCALE)
+
+
+func _c_ellipse(x: float, y: float, rx: float, ry: float, c: Color, outlined := false) -> void:
+	var k := CORGI_SCALE
+	if outlined:
+		ellipse(_q(x, y), rx * k + CORGI_LINE, ry * k + CORGI_LINE, CORGI_OUTLINE)
+	ellipse(_q(x, y), rx * k, ry * k, c)
+
+
+func _c_capsule(x0: float, x1: float, cy: float, r: float, c: Color, outlined := false) -> void:
+	var layers := [[CORGI_OUTLINE, CORGI_LINE], [c, 0.0]] if outlined else [[c, 0.0]]
+	for layer in layers:
+		var grow: float = layer[1]
+		var rr := r * CORGI_SCALE + grow
+		circle(_q(x0 + r, cy), rr, layer[0])
+		circle(_q(x1 - r, cy), rr, layer[0])
+		var a := _q(x0 + r, cy)
+		var b := _q(x1 - r, cy)
+		poly(PackedVector2Array([a + Vector2(0, -rr), b + Vector2(0, -rr), b + Vector2(0, rr), a + Vector2(0, rr)]), layer[0])
+
+
+func _c_tri(pts: Array, c: Color, outlined := false) -> void:
+	var v := PackedVector2Array()
+	for q in pts:
+		v.append(_q(q.x, q.y))
+	if outlined:
+		var center := (v[0] + v[1] + v[2]) / 3.0
+		var big := PackedVector2Array()
+		for q in v:
+			big.append(q + (q - center).normalized() * CORGI_LINE * 1.8)
+		poly(big, CORGI_OUTLINE)
+	poly(v, c)
+
+
+func _corgi(p: Vector2, s: float) -> void:
+	_cp = p
+	_cs = s
+	# 身體、肚子、腳、尾巴
+	_c_capsule(50, 380, 335, 85, CORGI_ORANGE, true)
+	_c_capsule(90, 350, 395, 25, CORGI_CREAM)
+	_c_ellipse(130, 420, 34, 18, CORGI_CREAM, true)
+	_c_ellipse(310, 420, 34, 18, CORGI_CREAM, true)
+	_c_ellipse(50, 300, 26, 22, CORGI_ORANGE, true)
+	# 耳朵（耳根被頭蓋住）
+	_c_tri([Vector2(298, 230), Vector2(308, 140), Vector2(354, 210)], CORGI_DARK, true)
+	_c_tri([Vector2(330, 220), Vector2(364, 130), Vector2(402, 218)], CORGI_ORANGE, true)
+	# 頭
+	_c_ellipse(360, 260, 72, 64, CORGI_ORANGE, true)
+	_c_tri([Vector2(350, 194), Vector2(366, 150), Vector2(384, 194)], CORGI_PINK)
+	# 額頭白線（斜的橢圓）
+	var blaze := PackedVector2Array()
+	for i in 14:
+		var t := TAU * i / 14.0
+		var lx := cos(t) * 34.0
+		var ly := sin(t) * 11.0
+		blaze.append(_q(402 + lx * 0.5 - ly * 0.866, 242 + lx * 0.866 + ly * 0.5))
+	poly(blaze, CORGI_CREAM)
+	_c_ellipse(390, 294, 46, 26, CORGI_CREAM)
+	# 嘴巴：張開笑、吐舌頭
+	_c_ellipse(438, 272, 42, 24, CORGI_CREAM, true)
+	_c_ellipse(426, 278, 40, 20, CORGI_CREAM)
+	var mouth := PackedVector2Array()
+	for i in 9:
+		var t := i / 8.0
+		var a := Vector2(414, 286)
+		var c := Vector2(442, 322)
+		var b := Vector2(472, 282)
+		var m := a.lerp(c, t).lerp(c.lerp(b, t), t)
+		mouth.append(_q(m.x, m.y))
+	poly(mouth, Color("5a2a2a"))
+	_c_ellipse(444, 300, 14, 9, Color("ff8a8a"))
+	_c_ellipse(476, 266, 11, 9, Color("263238"))
+	# 眼睛與腮紅
+	_c_ellipse(400, 246, 13, 15, Color("263238"))
+	_c_ellipse(404, 241, 5, 5, Color.WHITE)
+	_c_ellipse(382, 280, 15, 8, Color(CORGI_PINK, 0.75))
