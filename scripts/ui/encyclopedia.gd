@@ -54,9 +54,8 @@ static func open(host: Control) -> void:
 		var name_label := UiKit.label(Catalog.animal_name(species) if is_seen else "？？？", 28)
 		name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		col.add_child(name_label)
-		var info := Catalog.animal_hint(species)
-		if is_seen:
-			info += "\n第一次來訪：%s" % Review.label(seen[species])
+		# 出現條件不寫出來，讓玩家自己發現（新手引導只說明每種動物條件不同）
+		var info := "第一次來訪\n%s" % Review.label(seen[species]) if is_seen else "還沒來過"
 		var hint := UiKit.label(info, 20)
 		hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

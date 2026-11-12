@@ -23,7 +23,7 @@ const STEPS := {
 	Step.VISIT: {"page": PAGE_EVENTS, "trigger": "completed", "button": "",
 		"text": "再訂一件小事，完成後看看誰會來拜訪："},
 	Step.MEET: {"page": PAGE_ISLAND, "trigger": "button", "button": "",
-		"text": "綿羊來了！按「圖鑑」看看，來過的動物都會記在裡面，還沒來的會顯示剪影和提示。"},
+		"text": "綿羊來了！每種動物喜歡的環境都不一樣，蓋出不同的地形，就會有不同的動物來拜訪。按「圖鑑」看看你遇過哪些動物。"},
 	Step.OUTRO: {"page": PAGE_ISLAND, "trigger": "button", "button": "開始我的空島",
 		"text": "這是 10×10×10 的空間，都可以自由蓋。之後就照自己的步調，完成小事、慢慢長出你的島吧！"},
 }
