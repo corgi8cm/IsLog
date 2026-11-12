@@ -15,6 +15,9 @@ config/description="完成生活小事，蓋出屬於自己的空中花園島。
 config/version="0.3.1"
 run/main_scene="res://scenes/main.tscn"
 config/icon="res://assets/icon/icon.svg"
+boot_splash/bg_color=Color(0.74901963, 0.89411765, 1, 1)
+boot_splash/stretch_mode=0
+boot_splash/image="res://assets/icon/splash.png"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 
 [autoload]
