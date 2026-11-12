@@ -35,6 +35,16 @@ func ellipse(center: Vector2, rx: float, ry: float, c: Color, segments: int = 18
 	ci.draw_colored_polygon(pts, col(c))
 
 
+## 斜的橢圓：angle 為往後下方傾斜的角度，s 為面向（-1 時左右翻轉）。
+func tilted_ellipse(center: Vector2, rx: float, ry: float, angle: float, s: float, c: Color, segments: int = 14) -> void:
+	var pts := PackedVector2Array()
+	for i in segments:
+		var t := TAU * i / segments
+		var v := Vector2(cos(t) * rx, sin(t) * ry).rotated(-angle)
+		pts.append(center + Vector2(v.x * s, v.y))
+	ci.draw_colored_polygon(pts, col(c))
+
+
 func line(a: Vector2, b: Vector2, c: Color, width: float = 2.0) -> void:
 	ci.draw_line(a, b, col(c), width, true)
 
@@ -155,6 +165,9 @@ func animal(species: String, at: Vector2, flip: bool, confused: bool, bob: float
 				circle(p + Vector2(o.x * s, o.y), 5, Color("fafafa"))
 			ellipse(p + Vector2(9 * s, -9), 3.6, 3, Color("3d3d3d"))
 			circle(p + Vector2(10 * s, -10), 0.9, Color.WHITE)
+			# 耳朵：從頭的後上方往後伸出，顏色比臉淺一點才分得出來
+			tilted_ellipse(p + Vector2(5.7 * s, -10.2), 3.0, 1.2, 0.4, s, Color("6b6f73"))
+			tilted_ellipse(p + Vector2(5.2 * s, -9.9), 1.7, 0.5, 0.4, s, Color("f4b6c2"))
 		"fish":
 			var body := p + Vector2(0, 2)
 			ellipse(body, 7, 3.5, Color("ff8a3d"))
