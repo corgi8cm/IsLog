@@ -163,11 +163,11 @@ func animal(species: String, at: Vector2, flip: bool, confused: bool, bob: float
 				line(p + Vector2(x * s, -2), p + Vector2(x * s, 1), Color("4a4a4a"), 2)
 			for o in [Vector2(-5, -8), Vector2(0, -10), Vector2(5, -8), Vector2(-2, -6), Vector2(3, -6)]:
 				circle(p + Vector2(o.x * s, o.y), 5, Color("fafafa"))
+			# 耳朵往後下垂，耳根被頭蓋住
+			tilted_ellipse(p + Vector2(5.3 * s, -9.0), 3.0, 1.3, 0.55, s, Color("3d3d3d"))
+			tilted_ellipse(p + Vector2(4.2 * s, -8.3), 1.1, 0.45, 0.55, s, Color("f4b6c2"))
 			ellipse(p + Vector2(9 * s, -9), 3.6, 3, Color("3d3d3d"))
 			circle(p + Vector2(10 * s, -10), 0.9, Color.WHITE)
-			# 耳朵：從頭的後上方往後伸出，顏色比臉淺一點才分得出來
-			tilted_ellipse(p + Vector2(5.7 * s, -10.2), 3.0, 1.2, 0.4, s, Color("6b6f73"))
-			tilted_ellipse(p + Vector2(5.2 * s, -9.9), 1.7, 0.5, 0.4, s, Color("f4b6c2"))
 		"fish":
 			var body := p + Vector2(0, 2)
 			ellipse(body, 7, 3.5, Color("ff8a3d"))
