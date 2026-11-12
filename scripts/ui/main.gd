@@ -4,12 +4,13 @@ extends Control
 const EventsPage := preload("res://scripts/ui/events_page.gd")
 const IslandPage := preload("res://scripts/ui/island_page.gd")
 const ReviewPage := preload("res://scripts/ui/review_page.gd")
+const TutorialGuide := preload("res://scripts/ui/tutorial_guide.gd")
 
 var _pages: Array[Control] = []
 var _tabs: Array[Button] = []
 var _counts := {}
 var _daily: Label
-var _tutorial_card: PanelContainer
+var _guide: Control
 var _tutorial_step := -1
 var _tip_open := false
 
@@ -28,9 +29,6 @@ func _ready() -> void:
 	add_child(col)
 
 	col.add_child(_build_top_bar())
-	_tutorial_card = PanelContainer.new()
-	_tutorial_card.add_theme_stylebox_override("panel", UiKit.box(Color("fff8e1"), 0))
-	col.add_child(_tutorial_card)
 
 	var content := Control.new()
 	content.size_flags_vertical = SIZE_EXPAND_FILL
@@ -47,6 +45,11 @@ func _ready() -> void:
 	_pages[1].photo_mode_changed.connect(func(on: bool):
 		top_bar.visible = not on
 		tab_bar.visible = not on)
+
+	_guide = TutorialGuide.new()
+	_guide.main = self
+	_guide.visible = false
+	add_child(_guide)
 
 	Game.changed.connect(_refresh)
 	Game.cloud_choice_needed.connect(func(local_summary: Dictionary, remote: Dictionary):
@@ -163,50 +166,20 @@ func _show_page(index: int) -> void:
 
 func _refresh_tutorial() -> void:
 	var step := Game.data.tutorial_step
-	_tutorial_card.visible = Tutorial.is_active(step)
+	_guide.visible = Tutorial.is_active(step)
 	if step == _tutorial_step:
 		return
 	_tutorial_step = step
-	for c in _tutorial_card.get_children():
-		c.queue_free()
+	var island_page = _pages[1]
 	if not Tutorial.is_active(step):
-		var island_page = _pages[1]
 		island_page.view.reset_view()
 		return
-	var info := Tutorial.info(step)
-	_show_page(info.page)
-	if step == Tutorial.Step.OUTRO:
-		_pages[1].view.zoom = 0.62
-	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 10)
-	_tutorial_card.add_child(col)
-	var text := UiKit.label(info.text, 27)
-	text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	col.add_child(text)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 10)
-	col.add_child(row)
-	if step == Tutorial.Step.ADD_EVENT:
-		for title in Tutorial.SUGGESTIONS:
-			row.add_child(UiKit.button(title, func(): Game.add_event(title)))
-	if info.button != "":
-		var b := UiKit.button(info.button, _on_tutorial_button)
-		b.add_theme_stylebox_override("normal", UiKit.box(Color("d8f0c8"), 14))
-		row.add_child(b)
-	var spacer := Control.new()
-	spacer.size_flags_horizontal = SIZE_EXPAND_FILL
-	row.add_child(spacer)
-	if step != Tutorial.Step.OUTRO:
-		var skip := UiKit.button("略過引導", Game.skip_tutorial)
-		skip.add_theme_font_size_override("font_size", 22)
-		skip.add_theme_stylebox_override("normal", UiKit.box(Color(1, 1, 1, 0.6), 12))
-		row.add_child(skip)
-
-
-func _on_tutorial_button() -> void:
-	if Game.data.tutorial_step == Tutorial.Step.MEET:
-		Encyclopedia.open(self)
-	Game.tutorial_button()
+	_show_page(Tutorial.info(step).page)
+	if step == Tutorial.Step.PLACE:
+		island_page.view.layer = 0
+		island_page.view.reset_view()
+	elif step == Tutorial.Step.OUTRO:
+		island_page.view.zoom = 0.62
 
 
 func _check_tip() -> void:

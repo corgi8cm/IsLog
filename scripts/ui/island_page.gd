@@ -18,6 +18,7 @@ var _custom_row: HBoxContainer
 var _custom_scroll: ScrollContainer
 var _custom_choice := ""
 var _plant_choice := ""
+var _codex_button: Button
 ## 平常的操作介面（拍照模式時隱藏）。
 var _normal_ui: Array[Control] = []
 var _photo_ui: Control
@@ -56,7 +57,11 @@ func _ready() -> void:
 	cam_box.add_child(UiKit.button("放大", func(): view.zoom_at(1.25, view.size * 0.5)))
 	cam_box.add_child(UiKit.button("縮小", func(): view.zoom_at(0.8, view.size * 0.5)))
 	cam_box.add_child(UiKit.button("置中", view.reset_view))
-	cam_box.add_child(UiKit.button("圖鑑", func(): Encyclopedia.open(_modal_host())))
+	_codex_button = UiKit.button("圖鑑", func():
+		Encyclopedia.open(_modal_host())
+		if Game.data.tutorial_step == Tutorial.Step.MEET:
+			Game.tutorial_button())
+	cam_box.add_child(_codex_button)
 	cam_box.add_child(UiKit.button("拍照", set_photo_mode.bind(true)))
 	cam_box.add_child(UiKit.button("我的島", func(): IslandsDialog.open(_modal_host())))
 
@@ -213,6 +218,19 @@ func _modal_host() -> Control:
 func _change_layer(delta: int) -> void:
 	view.layer += delta
 	_refresh()
+
+
+## 新手引導用：目前的工具與按鈕位置。
+func current_tool() -> String:
+	return _tool
+
+
+func tool_rect(t: String) -> Rect2:
+	return _tool_buttons[t].get_global_rect()
+
+
+func codex_rect() -> Rect2:
+	return _codex_button.get_global_rect()
 
 
 func _select_tool(t: String) -> void:

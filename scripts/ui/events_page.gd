@@ -12,6 +12,9 @@ var _toast: Label
 var _expanded := {}
 ## 新增子事件後重建畫面時，讓那個事件的輸入框保持焦點。
 var _refocus_event := -1
+var _add_row: Control
+## 第一件待完成事件的「完成」按鈕（新手引導要亮它）。
+var _first_complete: Button
 
 
 func _ready() -> void:
@@ -34,6 +37,7 @@ func _ready() -> void:
 	var add_row := HBoxContainer.new()
 	add_row.add_theme_constant_override("separation", 10)
 	col.add_child(add_row)
+	_add_row = add_row
 	_input = LineEdit.new()
 	_input.placeholder_text = "輸入一件小事，例如：喝一杯水"
 	_input.size_flags_horizontal = SIZE_EXPAND_FILL
@@ -63,6 +67,17 @@ func _ready() -> void:
 
 	Game.changed.connect(_rebuild)
 	_rebuild()
+
+
+## 新手引導用：輸入列與第一個「完成」按鈕在畫面上的位置。
+func add_row_rect() -> Rect2:
+	return _add_row.get_global_rect()
+
+
+func first_complete_rect() -> Rect2:
+	if _first_complete == null or not _first_complete.is_inside_tree():
+		return Rect2()
+	return _first_complete.get_global_rect()
 
 
 func _add() -> void:
@@ -151,6 +166,7 @@ func _rebuild() -> void:
 		var empty := UiKit.label("還沒有事件，先加一件小事吧。", 26)
 		empty.add_theme_color_override("font_color", DONE_COLOR)
 		_list.add_child(empty)
+	_first_complete = null
 	for ev in pending:
 		_list.add_child(_pending_card(ev))
 
@@ -201,7 +217,10 @@ func _pending_card(ev: Dictionary) -> Control:
 	var parts := _card(Color.WHITE)
 	var row: HBoxContainer = parts[1]
 	var col: VBoxContainer = parts[2]
-	row.add_child(_small_button("完成", DONE_BG, _complete.bind(ev.id)))
+	var done_btn := _small_button("完成", DONE_BG, _complete.bind(ev.id))
+	row.add_child(done_btn)
+	if _first_complete == null:
+		_first_complete = done_btn
 	var progress := GameData.subtask_progress(ev)
 	var title: String = ev.title
 	if progress.y > 0:
