@@ -11,6 +11,13 @@ var _tabs: Array[Button] = []
 var _counts := {}
 var _daily: Label
 var _guide: Control
+var _top_sb: StyleBoxFlat
+var _tab_sb: StyleBoxFlat
+
+## 手機螢幕的圓角與瀏海會切到畫面邊緣：上、下、左右至少留這麼多（畫面座標）。
+const MIN_TOP_INSET := 34.0
+const MIN_BOTTOM_INSET := 18.0
+const MIN_SIDE_INSET := 10.0
 var _tutorial_step := -1
 var _tip_open := false
 
@@ -51,6 +58,9 @@ func _ready() -> void:
 	_guide.visible = false
 	add_child(_guide)
 
+	_apply_safe_area()
+	get_viewport().size_changed.connect(_apply_safe_area)
+
 	Game.changed.connect(_refresh)
 	Game.cloud_choice_needed.connect(func(local_summary: Dictionary, remote: Dictionary):
 		AccountDialog.open_choice(self, local_summary, remote))
@@ -60,10 +70,10 @@ func _ready() -> void:
 
 func _build_top_bar() -> Control:
 	var panel := PanelContainer.new()
-	var sb := UiKit.box(Color.WHITE, 0)
-	sb.content_margin_top = 18
-	sb.content_margin_bottom = 14
-	panel.add_theme_stylebox_override("panel", sb)
+	_top_sb = UiKit.box(Color.WHITE, 0)
+	_top_sb.content_margin_top = 18
+	_top_sb.content_margin_bottom = 14
+	panel.add_theme_stylebox_override("panel", _top_sb)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
 	panel.add_child(row)
@@ -140,7 +150,8 @@ func open_exchange(from_type: String = Materials.DIRT) -> void:
 
 func _build_tab_bar() -> Control:
 	var panel := PanelContainer.new()
-	panel.add_theme_stylebox_override("panel", UiKit.box(Color.WHITE, 0))
+	_tab_sb = UiKit.box(Color.WHITE, 0)
+	panel.add_theme_stylebox_override("panel", _tab_sb)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 12)
 	panel.add_child(row)
@@ -160,6 +171,37 @@ func _show_page(index: int) -> void:
 		var selected := i == index
 		_tabs[i].add_theme_stylebox_override(
 			"normal", UiKit.box(Color("dceefc") if selected else Color.WHITE, 14))
+
+
+# --- 安全區域 -------------------------------------------------------------
+
+## 依手機回報的安全區域（瀏海、圓角）加大上方素材列與下方分頁列的留白。
+func _apply_safe_area() -> void:
+	var insets := safe_insets()
+	_top_sb.content_margin_top = 18 + insets.top
+	_top_sb.content_margin_left = 16 + insets.side
+	_top_sb.content_margin_right = 16 + insets.side
+	_tab_sb.content_margin_bottom = 10 + insets.bottom
+	_tab_sb.content_margin_left = 16 + insets.side
+	_tab_sb.content_margin_right = 16 + insets.side
+
+
+## 畫面座標的上、下、左右留白：{top, bottom, side}
+func safe_insets() -> Dictionary:
+	var top := MIN_TOP_INSET
+	var bottom := MIN_BOTTOM_INSET
+	var side := MIN_SIDE_INSET
+	var win := DisplayServer.window_get_size()
+	# 電腦版的安全區域是工作列以外的範圍，不適用；只在手機上用（手機上遊戲是全螢幕）
+	if win.x > 0 and OS.has_feature("mobile"):
+		var k := get_viewport_rect().size.x / win.x
+		var safe := DisplayServer.get_display_safe_area()
+		var screen := DisplayServer.screen_get_size()
+		if safe.size.x > 0 and screen.x > 0:
+			top = maxf(top, safe.position.y * k)
+			bottom = maxf(bottom, (screen.y - safe.end.y) * k)
+			side = maxf(side, maxf(safe.position.x, screen.x - safe.end.x) * k)
+	return {"top": top, "bottom": bottom, "side": side}
 
 
 # --- 新手引導與提示 -------------------------------------------------------
