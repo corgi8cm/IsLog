@@ -111,7 +111,18 @@ func _mode_bar() -> Control:
 		b.add_theme_stylebox_override("normal", UiKit.box(Color("dceefc") if _mode == i else Color.WHITE, 14))
 		row.add_child(b)
 		_mode_buttons.append(b)
+	var account := UiKit.button("帳號與備份", func(): AccountDialog.open(_modal_host()))
+	account.add_theme_font_size_override("font_size", 22)
+	row.add_child(account)
 	return row
+
+
+## 對話框要蓋住整個畫面，所以加在最上層的 Control。
+func _modal_host() -> Control:
+	var n: Node = self
+	while n.get_parent() is Control:
+		n = n.get_parent()
+	return n as Control
 
 
 func _set_mode(mode: int) -> void:

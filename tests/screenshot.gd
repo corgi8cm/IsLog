@@ -118,8 +118,32 @@ func _run() -> void:
 	var review = main.get("_pages")[2]
 	review.call("_set_mode", 1)
 	await _shot(out_dir, "review_timeline.png")
+	review.call("_set_mode", 0)
+	game.save_root = "user://screenshot_demo"
+	var backend := FakeCloudBackend.new()
+	backend.folder = "user://screenshot_demo/cloud"
+	game.setup_cloud(backend)
+	_press(main, "帳號與備份")
+	await _shot(out_dir, "account.png")
+	_press(main, "綁定帳號")
+	for i in 8:
+		await process_frame
+	await _shot(out_dir, "account_linked.png")
+	main.get_child(-1).queue_free()
+	var remote: Dictionary = game.export_bundle(game.now() + 100)
+	remote.game.total_completed = 240
+	remote.device = "Pixel 9"
+	game.cloud_choice_needed.emit(game.export_summary(), remote)
+	await _shot(out_dir, "account_choice.png")
 	_remove_dir("user://screenshot_demo")
 	quit()
+
+
+func _press(main: Node, text: String) -> void:
+	for b in main.find_children("*", "Button", true, false):
+		if b.text == text and b.is_visible_in_tree():
+			b.pressed.emit()
+			return
 
 
 func _shot(dir: String, file: String) -> void:

@@ -49,6 +49,8 @@ func _ready() -> void:
 		tab_bar.visible = not on)
 
 	Game.changed.connect(_refresh)
+	Game.cloud_choice_needed.connect(func(local_summary: Dictionary, remote: Dictionary):
+		AccountDialog.open_choice(self, local_summary, remote))
 	_show_page(0)
 	_refresh()
 

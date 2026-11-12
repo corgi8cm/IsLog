@@ -4,6 +4,8 @@ extends Node
 signal changed
 ## 只有動物位置改變（漫步），不需要存檔與重建畫面。
 signal animals_moved
+## 雲端和本機都有新進度，畫面要讓玩家選（轉送 CloudSync.choice_needed）。
+signal cloud_choice_needed(local_summary: Dictionary, remote_bundle: Dictionary)
 
 const WANDER_SECONDS := 2.5
 const TICK_SECONDS := 60.0
@@ -19,12 +21,16 @@ var rng := RandomNumberGenerator.new()
 var _tick_state := ""
 ## 最近一次來訪的動物是不是第一次來（給畫面顯示「新的動物！」）。
 var result_first_visit := false
+## 帳號綁定與雲端備份。
+var cloud: CloudSync
 
 
 func _ready() -> void:
 	rng.randomize()
 	load_game()
 	tick()
+	setup_cloud(_make_backend())
+	cloud.start()
 	_add_timer(WANDER_SECONDS, wander)
 	_add_timer(TICK_SECONDS, tick)
 
@@ -40,6 +46,8 @@ func _add_timer(seconds: float, callback: Callable) -> void:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_WM_CLOSE_REQUEST:
 		save_game()
+		if cloud:
+			cloud.auto_backup()
 	elif what == NOTIFICATION_APPLICATION_RESUMED:
 		tick()
 
@@ -344,10 +352,75 @@ func dismiss_tip(key: String) -> void:
 	save_game()
 
 
+# --- 雲端備份 -------------------------------------------------------------
+
+## 手機上要有 Play 遊戲服務外掛才有真的雲端；電腦版用測試雲端。
+func _make_backend() -> CloudBackend:
+	if not OS.has_feature("android"):
+		return FakeCloudBackend.new()
+	return CloudBackend.new()
+
+
+func setup_cloud(backend: CloudBackend) -> void:
+	if cloud:
+		cloud.queue_free()
+	cloud = CloudSync.new()
+	add_child(cloud)
+	cloud.setup(self, backend, save_root)
+	cloud.choice_needed.connect(cloud_choice_needed.emit)
+
+
+## 剛開始玩的存檔（換新手機時會直接用雲端的）。
+func is_fresh_save() -> bool:
+	return data.total_completed == 0 and data.island_ids.size() <= 1
+
+
+func export_summary() -> Dictionary:
+	return CloudSave.summarize(data.to_dict(), _all_island_dicts())
+
+
+func _all_island_dicts() -> Dictionary:
+	var out := {}
+	for island_id in data.island_ids:
+		out[island_id] = island.to_dict() if island_id == island.id else _read_json(_island_path(island_id))
+	return out
+
+
+## 把玩家存檔和所有島嶼打包成一份。
+func export_bundle(saved_at: int) -> Dictionary:
+	save_game()
+	return CloudSave.make_bundle(data.to_dict(), _all_island_dicts(), saved_at, OS.get_model_name())
+
+
+## 用雲端存檔包取代本機存檔。原本的存檔先複製到 backup 資料夾。
+func apply_bundle(bundle: Dictionary) -> bool:
+	if not CloudSave.is_valid(bundle):
+		return false
+	save_game()
+	var backup := save_root.path_join("backup")
+	DirAccess.make_dir_recursive_absolute(backup.path_join(ISLAND_DIR))
+	if FileAccess.file_exists(_save_path()):
+		DirAccess.copy_absolute(_save_path(), backup.path_join(SAVE_FILE))
+	var dir := DirAccess.open(save_root.path_join(ISLAND_DIR))
+	if dir:
+		for f in dir.get_files():
+			var path := save_root.path_join(ISLAND_DIR).path_join(f)
+			DirAccess.copy_absolute(path, backup.path_join(ISLAND_DIR).path_join(f))
+			DirAccess.remove_absolute(path)
+	var islands: Dictionary = bundle.islands
+	for k in islands:
+		_write_json(_island_path(int(k)), islands[k])
+	_write_json(_save_path(), bundle.game)
+	load_game()
+	return true
+
+
 # --- 存檔 ---------------------------------------------------------------
 
 func _commit() -> void:
 	save_game()
+	if cloud:
+		cloud.mark_changed()
 	changed.emit()
 
 

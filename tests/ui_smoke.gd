@@ -185,6 +185,7 @@ func _run() -> void:
 	page.call("_select_tool", Materials.DIRT)
 	main.call("_show_page", 0)
 
+	await _cloud_flow(game, main)
 	await _tutorial_walkthrough(game, main)
 
 	_cleanup("user://ui_smoke")
@@ -200,6 +201,62 @@ func _close_modals(main: Control) -> void:
 
 func _button(node: Node, text: String) -> Button:
 	return _find(node, func(n): return n is Button and n.text == text and n.is_visible_in_tree()) as Button
+
+
+## 帳號綁定：第一次備份、兩邊都有進度時選雲端、只有雲端有進度時自動還原。
+func _cloud_flow(game, main: Control) -> void:
+	_close_modals(main)
+	var backend := FakeCloudBackend.new()
+	backend.folder = "user://ui_smoke/cloud"
+	game.setup_cloud(backend)
+	var cloud = game.cloud
+	main.call("_show_page", 2)
+	await _frames()
+	_button(main, "帳號與備份").pressed.emit()
+	await _frames()
+	check(_button(main, "綁定帳號") != null, "顯示綁定按鈕")
+	_button(main, "綁定帳號").pressed.emit()
+	await _frames(8)
+	check(cloud.linked and not cloud.local_changed, "綁定後第一次備份完成")
+	check(FileAccess.file_exists("user://ui_smoke/cloud/cloud.json"), "雲端有存檔")
+	check(_button(main, "立即備份") != null, "畫面改成已綁定")
+
+	# 模擬另一台手機更新了雲端，這台也有新進度
+	var path := "user://ui_smoke/cloud/cloud.json"
+	var remote: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	remote.saved_at = int(remote.saved_at) + 100
+	remote.game.total_completed = 999
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	f.store_string(JSON.stringify(remote))
+	f.close()
+	var ev: Dictionary = game.add_event("雲端測試")
+	game.complete_event(ev.id)
+	check(cloud.local_changed, "本機有新進度")
+	_button(main, "立即備份").pressed.emit()
+	await _frames(8)
+	var keep_cloud := _find(main, func(n): return n is Button and n.text.begins_with("保留雲端") and n.is_visible_in_tree()) as Button
+	check(keep_cloud != null, "兩邊都有進度時讓玩家選")
+	if keep_cloud:
+		keep_cloud.pressed.emit()
+		await _frames(4)
+	check(game.data.total_completed == 999, "選雲端後還原雲端進度")
+	check(not cloud.local_changed and cloud.last_synced == int(remote.saved_at), "還原後同步紀錄更新")
+	check(FileAccess.file_exists("user://ui_smoke/backup/save.json"), "還原前留了備份")
+
+	# 只有雲端有新進度：直接還原
+	remote.saved_at = int(remote.saved_at) + 100
+	remote.game.total_completed = 1234
+	f = FileAccess.open(path, FileAccess.WRITE)
+	f.store_string(JSON.stringify(remote))
+	f.close()
+	cloud.sync()
+	await _frames(8)
+	check(game.data.total_completed == 1234, "只有雲端有新進度時自動還原")
+	cloud.unlink()
+	check(not cloud.linked, "解除綁定")
+	_close_modals(main)
+	await _frames()
+	main.call("_show_page", 0)
 
 
 ## 新手引導從頭走到尾。

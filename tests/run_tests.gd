@@ -843,6 +843,78 @@ func test_save_and_load_files() -> void:
 	_remove_dir(dir)
 
 
+# --- 雲端備份 -------------------------------------------------------------
+
+func test_cloud_decide() -> void:
+	check(CloudSave.decide(0, 0, false, true) == CloudSave.UPLOAD, "雲端沒有存檔：第一次綁定就上傳")
+	check(CloudSave.decide(0, 50, false, false) == CloudSave.NONE, "雲端被清空但本機沒變：不動")
+	check(CloudSave.decide(100, 100, false, false) == CloudSave.NONE, "兩邊都沒變")
+	check(CloudSave.decide(100, 100, true, false) == CloudSave.UPLOAD, "只有本機有新進度：上傳")
+	check(CloudSave.decide(200, 100, false, false) == CloudSave.DOWNLOAD, "只有雲端有新進度：下載")
+	check(CloudSave.decide(200, 100, true, false) == CloudSave.CONFLICT, "兩邊都有新進度：讓玩家選")
+	check(CloudSave.decide(200, 0, true, true) == CloudSave.DOWNLOAD, "新手機第一次綁定：直接還原")
+	check(CloudSave.decide(200, 0, true, false) == CloudSave.CONFLICT, "已經玩過的手機第一次綁定：讓玩家選")
+
+
+func test_cloud_bundle_valid_and_summary() -> void:
+	var g := GameData.new()
+	var ev := g.add_event("喝水", 0)
+	g.complete_event(ev.id, "2026-11-10", 10, _rng())
+	var isl := IslandData.new()
+	isl.blocks[Vector3i(1, 1, 0)] = Materials.DIRT
+	var b := CloudSave.make_bundle(g.to_dict(), {0: isl.to_dict()}, 123, "測試機")
+	check(CloudSave.is_valid(b), "打包結果應可使用")
+	check(b.summary.total_completed == 1 and b.summary.islands == 1 and b.summary.blocks == 1, "摘要數字正確")
+	check(b.summary.last_done == "2026-11-10", "摘要有最後完成日期")
+	check(CloudSave.summary_text(b.summary).contains("累計完成 1 件"), "摘要文字")
+	var parsed: Dictionary = JSON.parse_string(JSON.stringify(b))
+	check(CloudSave.is_valid(parsed), "轉成 JSON 再讀回仍可使用")
+	var newer := b.duplicate(true)
+	newer.format = CloudSave.FORMAT + 1
+	check(not CloudSave.is_valid(newer), "新版遊戲的存檔不能讀")
+	var missing := b.duplicate(true)
+	missing.islands = {}
+	check(not CloudSave.is_valid(missing), "缺少目前的島不能用")
+	check(not CloudSave.is_valid({}), "空的不能用")
+
+
+func test_cloud_export_and_apply() -> void:
+	var dir_a := "user://test_cloud_a_%d" % Time.get_ticks_usec()
+	var dir_b := "user://test_cloud_b_%d" % Time.get_ticks_usec()
+	var a = load("res://scripts/game.gd").new()
+	a.save_root = dir_a
+	a.rng.seed = 3
+	a.data.total_completed = 100
+	var ev: Dictionary = a.add_event("散步")
+	a.complete_event(ev.id)
+	a.island.blocks[Vector3i(2, 2, 0)] = Materials.STONE
+	check(a.create_island(), "解鎖第二座島")
+	a.island.blocks[Vector3i(3, 3, 0)] = Materials.SAND
+	a.save_game()
+	var bundle: Dictionary = a.export_bundle(500)
+	check(bundle.islands.size() == 2, "存檔包有兩座島")
+
+	var b = load("res://scripts/game.gd").new()
+	b.save_root = dir_b
+	b.new_game()
+	b.save_game()
+	check(b.is_fresh_save(), "新存檔")
+	var parsed: Dictionary = JSON.parse_string(JSON.stringify(bundle))
+	check(b.apply_bundle(parsed), "套用雲端存檔")
+	check(b.data.total_completed == 101, "完成件數還原")
+	check(b.island.id == 1 and b.island.get_block(Vector3i(3, 3, 0)) == Materials.SAND, "目前的島還原")
+	check(b.load_island(0).get_block(Vector3i(2, 2, 0)) == Materials.STONE, "收起來的島也還原")
+	check(FileAccess.file_exists(dir_b.path_join("backup/save.json")), "原本的存檔留一份備份")
+	check(not b.is_fresh_save(), "還原後不是新存檔")
+	check(not b.apply_bundle({}), "壞的存檔包不套用")
+	check(b.data.total_completed == 101, "套用失敗時本機不變")
+
+	a.free()
+	b.free()
+	_remove_dir(dir_a)
+	_remove_dir(dir_b)
+
+
 func _remove_dir(path: String) -> void:
 	var d := DirAccess.open(path)
 	if d == null:
