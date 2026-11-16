@@ -122,7 +122,7 @@ func _run() -> void:
 	# 從島嶼頁的「圖鑑」按鈕開啟（-s 腳本不能直接引用用到 Autoload 的類別）
 	main.call("_show_page", 1)
 	for b in main.find_children("*", "Button", true, false):
-		if b.text == "圖鑑":
+		if b.tooltip_text == "圖鑑":
 			b.pressed.emit()
 	await _shot(out_dir, "encyclopedia.png")
 	main.get_child(-1).queue_free()
@@ -154,7 +154,7 @@ func _run() -> void:
 
 func _press(main: Node, text: String) -> void:
 	for b in main.find_children("*", "Button", true, false):
-		if b.text == text and b.is_visible_in_tree():
+		if (b.text == text or b.tooltip_text == text) and b.is_visible_in_tree():
 			b.pressed.emit()
 			return
 

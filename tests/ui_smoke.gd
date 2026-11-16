@@ -90,11 +90,11 @@ func _run() -> void:
 	check(_find(events_page, func(n): return n is Label and n.text == "整理房間（0/2）") != null, "顯示進度 0/2")
 	for i in 2:
 		var row: Node = _find(events_page, func(n): return n is Label and n.text == ev.subtasks[i].title).get_parent()
-		var btn: Button = _find(row, func(n): return n is Button and n.text == "完成")
+		var btn: Button = _find(row, func(n): return n is Button and n.tooltip_text == "完成")
 		btn.pressed.emit()
 		await _frames()
 	check(ev.done_date != "", "兩個子事件完成後母事件自動完成")
-	check(_find(events_page, func(n): return n is Label and n.text.begins_with("✓ 整理房間")) != null, "出現在今天完成")
+	check(_find(events_page, func(n): return n is Label and n.text.begins_with("整理房間（子事件")) != null, "出現在今天完成")
 
 	# 拍照模式：隱藏介面與格線，返回後恢復（不測儲存，避免寫進電腦的圖片資料夾）
 	main.call("_show_page", 1)
@@ -149,7 +149,8 @@ func _run() -> void:
 	await _frames()
 	_button(page, "＋ 設計").pressed.emit()
 	await _frames()
-	_button(main, "石").pressed.emit()
+	# 設計視窗最後加進主畫面；只在視窗裡找，避免找到工具列的石頭
+	_button(main.get_child(main.get_child_count() - 1), "石").pressed.emit()
 	await _frames()
 	var canvas: Control = _find(main, func(n): return n.get_script() != null and n.has_signal("painted"))
 	var corner: Vector2 = canvas.get_global_rect().position + Vector2(4, 4)
@@ -200,7 +201,7 @@ func _close_modals(main: Control) -> void:
 
 
 func _button(node: Node, text: String) -> Button:
-	return _find(node, func(n): return n is Button and n.text == text and n.is_visible_in_tree()) as Button
+	return _find(node, func(n): return n is Button and (n.text == text or n.tooltip_text == text) and n.is_visible_in_tree()) as Button
 
 
 ## 帳號綁定：第一次備份、兩邊都有進度時選雲端、只有雲端有進度時自動還原。
