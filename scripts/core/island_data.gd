@@ -342,9 +342,12 @@ func update_animals(fade: float, now_unix: int) -> bool:
 
 
 ## 動物漫步：每隻隨機走到周圍 8 格（高度差一層以內）的棲地，或留在原地。
-func wander(rng: RandomNumberGenerator) -> void:
+## 夜晚會睡覺的動物不走動。
+func wander(rng: RandomNumberGenerator, night := false) -> void:
 	for a in animals:
 		if a.confused_since != 0:
+			continue
+		if night and Catalog.sleeps_at_night(a.species):
 			continue
 		var options := [a.pos]
 		for d in NEIGHBORS:

@@ -99,6 +99,14 @@ static func is_valid_variant(id: String, variant: String) -> bool:
 	return variant == "" or variant == animal_variant(id)
 
 
+## 夜晚會睡覺（不走動、頭上冒 z）的動物；水裡和沙灘上的照樣活動。
+const SLEEPERS := ["sheep", "rabbit", "corgi", "goat", "lizard"]
+
+
+static func sleeps_at_night(id: String) -> bool:
+	return id in SLEEPERS
+
+
 static func is_basic_animal(id: String) -> bool:
 	return animal_condition(id).is_empty()
 

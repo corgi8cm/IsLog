@@ -13,6 +13,7 @@ func _run() -> void:
 	game.data = GameData.new()
 	game.island = IslandData.new()
 	game.rng.seed = 3
+	game.clock_override = 12 * 60
 	for title in ["喝一杯水", "伸展一分鐘", "整理桌面", "讀 10 頁書", "散步十分鐘"]:
 		game.add_event(title)
 	for i in 2:
@@ -85,6 +86,10 @@ func _run() -> void:
 	await _shot(out_dir, "events.png")
 	main.call("_show_page", 1)
 	await _shot(out_dir, "island.png")
+	for t in [["morning", 7 * 60], ["evening", 18 * 60], ["night", 22 * 60]]:
+		game.set_clock(t[1])
+		await _shot(out_dir, "island_%s.png" % t[0])
+	game.set_clock(12 * 60)
 	var page = main.get("_pages")[1]
 	page.view.layer = 1
 	page.view.rotation_step = 1

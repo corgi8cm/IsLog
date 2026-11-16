@@ -17,17 +17,17 @@ const NAMES := {
 }
 
 static var _top_colors := {
-	DIRT: Color("7cc35a"),
-	WATER: Color("5cbcf0"),
-	STONE: Color("aab1b9"),
-	SAND: Color("efdca2"),
+	DIRT: Color("a8c686"),
+	WATER: Color("8cc2db"),
+	STONE: Color("cfcac0"),
+	SAND: Color("f1dfb4"),
 }
 
 static var _side_colors := {
-	DIRT: Color("9a6b45"),
-	WATER: Color("3a8fd0"),
-	STONE: Color("838a93"),
-	SAND: Color("d8c07f"),
+	DIRT: Color("c9946b"),
+	WATER: Color("73a8c7"),
+	STONE: Color("b1aa9d"),
+	SAND: Color("dfc690"),
 }
 
 

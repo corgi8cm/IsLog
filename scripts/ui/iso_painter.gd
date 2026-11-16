@@ -10,6 +10,8 @@ var alpha := 1.0
 var silhouette := false
 ## 同一種動物的不同毛色（""＝原本的樣子）。
 var variant := ""
+## 晝夜染色（乘上去）。
+var tint := Color.WHITE
 
 
 func _init(canvas: CanvasItem) -> void:
@@ -20,7 +22,7 @@ func col(c: Color) -> Color:
 	if silhouette:
 		return Color(0.32, 0.36, 0.42, c.a * alpha) if c.a > 0.5 else Color(0, 0, 0, 0)
 	var l := c.get_luminance()
-	var out := c.lerp(Color(l, l, l, c.a), fade)
+	var out := c.lerp(Color(l, l, l, c.a), fade) * Color(tint.r, tint.g, tint.b, 1.0)
 	out.a = c.a * alpha
 	return out
 

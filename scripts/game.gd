@@ -6,6 +6,10 @@ signal changed
 signal animals_moved
 ## 雲端和本機都有新進度，畫面要讓玩家選（轉送 CloudSync.choice_needed）。
 signal cloud_choice_needed(local_summary: Dictionary, remote_bundle: Dictionary)
+## 時間往前走了（晝夜）：島要重畫；跨過夜晚時介面換深色。
+signal daytime_changed
+
+const DAYTIME_SECONDS := 30.0
 
 const WANDER_SECONDS := 2.5
 const TICK_SECONDS := 60.0
@@ -23,6 +27,8 @@ var _tick_state := ""
 var result_first_visit := false
 ## 帳號綁定與雲端備份。
 var cloud: CloudSync
+## 測試與截圖用：固定一天中的時間（分鐘，0..1439）；-1 表示用手機時間。
+var clock_override := -1
 
 
 func _ready() -> void:
@@ -33,6 +39,7 @@ func _ready() -> void:
 	cloud.start()
 	_add_timer(WANDER_SECONDS, wander)
 	_add_timer(TICK_SECONDS, tick)
+	_add_timer(DAYTIME_SECONDS, daytime_changed.emit)
 
 
 func _add_timer(seconds: float, callback: Callable) -> void:
@@ -58,6 +65,23 @@ func today() -> String:
 
 func now() -> int:
 	return int(Time.get_unix_time_from_system())
+
+
+## 一天中的第幾分鐘（晝夜用）。
+func now_minutes() -> int:
+	if clock_override >= 0:
+		return clock_override
+	var t := Time.get_time_dict_from_system()
+	return DayCycle.minutes_of(t.hour, t.minute)
+
+
+func is_night() -> bool:
+	return DayCycle.is_night(now_minutes())
+
+
+func set_clock(minutes: int) -> void:
+	clock_override = minutes
+	daytime_changed.emit()
 
 
 # --- 事件 ---------------------------------------------------------------
@@ -216,7 +240,7 @@ func tick() -> void:
 func wander() -> void:
 	if island.animals.is_empty():
 		return
-	island.wander(rng)
+	island.wander(rng, is_night())
 	animals_moved.emit()
 
 
