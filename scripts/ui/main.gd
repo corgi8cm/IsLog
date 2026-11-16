@@ -313,6 +313,10 @@ func _check_tip() -> void:
 		return
 	var key := Game.pending_tip()
 	if key == "":
+		if Game.should_ask_daily_reminder():
+			_tip_open = true
+			NotifyDialog.ask_daily(self)
+			get_child(-1).tree_exited.connect(func(): _tip_open = false)
 		return
 	_tip_open = true
 	Game.dismiss_tip(key)

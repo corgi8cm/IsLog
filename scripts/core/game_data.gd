@@ -45,6 +45,8 @@ const EVENTS_PER_DESIGN_SLOT := 30
 ## 做好的自訂方塊數量放在 inventory["custom:<id>"]。
 var custom_designs: Array = []
 var next_design_id := 1
+## 通知設定（見 NotifyPlan.DEFAULTS）。
+var notify: Dictionary = NotifyPlan.DEFAULTS.duplicate()
 
 
 # --- 自訂方塊 -------------------------------------------------------------
@@ -432,6 +434,7 @@ func to_dict() -> Dictionary:
 			"id": d.id, "base": d.base,
 			"top": CustomBlocks.to_hex(d.top), "side": CustomBlocks.to_hex(d.side)}),
 		"next_design_id": next_design_id,
+		"notify": notify.duplicate(),
 	}
 
 
@@ -530,6 +533,7 @@ static func from_dict(d: Dictionary) -> GameData:
 	g.current_island = int(d.get("current_island", g.island_ids[0]))
 	if not g.island_ids.has(g.current_island):
 		g.current_island = g.island_ids[0]
+	g.notify = NotifyPlan.clean_settings(d.get("notify", {}))
 	var tips = d.get("tips_shown", {})
 	if typeof(tips) == TYPE_DICTIONARY:
 		for k in tips:

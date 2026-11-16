@@ -41,7 +41,11 @@ static func open(host: Control, title: String, initial: Dictionary, today: Strin
 	row.add_child(clear)
 	var ok := UiKit.button("確定", func():
 		overlay.queue_free()
-		on_done.call(result(state)), "AccentButton")
+		var when := result(state)
+		if int(when.remind) >= 0:
+			# 第一次設提醒時問手機要不要允許通知
+			Game.notifier.request_permission()
+		on_done.call(when), "AccentButton")
 	ok.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	ok.custom_minimum_size = Vector2(0, 72)
 	row.add_child(ok)
@@ -133,6 +137,19 @@ static func _build(content: VBoxContainer, state: Dictionary, today: String) -> 
 				redo.call())
 		elif kind == Schedule.MONTHLY:
 			content.add_child(UiKit.label(Schedule.describe({"kind": Schedule.MONTHLY}, state.date), 22, "Muted"))
+
+		# 提醒（手機通知）
+		content.add_child(UiKit.label("提醒", 24, "Muted"))
+		var mrow := _chips(content)
+		for m in [-1] + Schedule.REMIND_CHOICES:
+			var text := "不提醒" if m == -1 else Schedule.remind_text(m).trim_suffix("提醒")
+			if m == 0:
+				text = "準時"
+			_chip(mrow, text, state.remind == m, func():
+				state.remind = m
+				redo.call())
+		if state.remind >= 0 and state.time < 0:
+			content.add_child(UiKit.label("沒指定時間的事件，在當天早上 9 點提醒。", 21, "Muted"))
 
 
 static func _chips(parent: Control) -> HFlowContainer:

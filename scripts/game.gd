@@ -27,6 +27,9 @@ var _tick_state := ""
 var result_first_visit := false
 ## 帳號綁定與雲端備份。
 var cloud: CloudSync
+## 手機通知（電腦版只記錄不發送）。
+var notifier: Notifier = AndroidNotifier.new() if AndroidNotifier.available() else Notifier.new()
+var _replan_queued := false
 ## 測試與截圖用：固定一天中的時間（分鐘，0..1439）；-1 表示用手機時間。
 var clock_override := -1
 
@@ -40,6 +43,7 @@ func _ready() -> void:
 	_add_timer(WANDER_SECONDS, wander)
 	_add_timer(TICK_SECONDS, tick)
 	_add_timer(DAYTIME_SECONDS, daytime_changed.emit)
+	replan_notifications()
 
 
 func _add_timer(seconds: float, callback: Callable) -> void:
@@ -53,6 +57,7 @@ func _add_timer(seconds: float, callback: Callable) -> void:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_WM_CLOSE_REQUEST:
 		save_game()
+		replan_notifications()
 		if cloud:
 			cloud.auto_backup()
 	elif what == NOTIFICATION_APPLICATION_RESUMED:
@@ -73,6 +78,38 @@ func now_minutes() -> int:
 		return clock_override
 	var t := Time.get_time_dict_from_system()
 	return DayCycle.minutes_of(t.hour, t.minute)
+
+
+## 時區和 UTC 差幾分鐘（排通知用）。
+func tz_bias() -> int:
+	return int(Time.get_time_zone_from_system().get("bias", 0))
+
+
+## 依目前的事件與設定重新排通知（整批換掉）。
+func replan_notifications() -> void:
+	_replan_queued = false
+	var plan := NotifyPlan.build(data, data.notify, today(), now(), tz_bias(),
+		island.last_care_date if not island.archived else "", current_fade())
+	notifier.replace_all(plan)
+
+
+## 同一個畫面動作可能存檔好幾次，排通知等這一輪結束再做一次就好。
+func _queue_replan() -> void:
+	if not _replan_queued:
+		_replan_queued = true
+		replan_notifications.call_deferred()
+
+
+func set_notify(key: String, value) -> void:
+	var s := data.notify.duplicate()
+	s[key] = value
+	data.notify = NotifyPlan.clean_settings(s)
+	_commit()
+
+
+## 第一次完成事件之後，問一次要不要每天提醒。
+func should_ask_daily_reminder() -> bool:
+	return not data.notify.asked and data.total_completed >= 1 and not Tutorial.is_active(data.tutorial_step)
 
 
 func is_night() -> bool:
@@ -470,6 +507,7 @@ func _commit() -> void:
 	save_game()
 	if cloud:
 		cloud.mark_changed()
+	_queue_replan()
 	changed.emit()
 
 

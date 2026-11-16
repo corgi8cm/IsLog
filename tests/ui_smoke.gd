@@ -27,6 +27,8 @@ func _run() -> void:
 	var game = root.get_node("Game")
 	game.save_root = "user://ui_smoke"
 	game.data = GameData.new()
+	# 「要不要每天提醒」只問一次；這裡先當作問過，避免對話框擋住其他測試
+	game.data.notify.asked = true
 	game.island = IslandData.new()
 	game.data.inventory[Materials.DIRT] = 2
 

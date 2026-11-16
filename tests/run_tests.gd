@@ -759,6 +759,62 @@ func test_planned_on_projects_repeats() -> void:
 	check(wed.size() == 2 and wed[0].title == "看牙醫", "同一天有時間的排前面")
 
 
+func test_notify_quiet_hours() -> void:
+	var st := NotifyPlan.DEFAULTS.duplicate()
+	check(NotifyPlan.in_quiet(23 * 60 + 30, st.quiet_start, st.quiet_end), "23:30 在安靜時段")
+	check(NotifyPlan.in_quiet(7 * 60, st.quiet_start, st.quiet_end), "07:00 在安靜時段")
+	check(not NotifyPlan.in_quiet(21 * 60, st.quiet_start, st.quiet_end), "21:00 不在")
+	check(NotifyPlan.after_quiet("2026-11-16", 23 * 60 + 30, st) == ["2026-11-17", 8 * 60], "晚上的延到隔天早上")
+	check(NotifyPlan.after_quiet("2026-11-16", 6 * 60, st) == ["2026-11-16", 8 * 60], "清晨的延到當天早上")
+	check(not NotifyPlan.in_quiet(600, 600, 600), "開始等於結束代表沒有安靜時段")
+	check(NotifyPlan.to_unix("2026-11-16", 9 * 60, 480) == Time.get_unix_time_from_datetime_string("2026-11-16T01:00:00"), "台灣早上 9 點是 UTC 1 點")
+
+
+func test_notify_plan_build() -> void:
+	var g := GameData.new()
+	var bias := 0
+	var today := "2026-11-16"
+	var now := NotifyPlan.to_unix(today, 12 * 60, bias)
+	var st := NotifyPlan.clean_settings({"daily": true})
+	var a := g.add_event("看牙醫", 0, [], {"due_date": "2026-11-17", "due_time": 10 * 60 + 30, "remind": 60})
+	g.add_event("已經過了", 0, [], {"due_date": today, "due_time": 8 * 60, "remind": 0})
+	g.add_event("沒有提醒", 0, [], {"due_date": "2026-11-17"})
+	var b := g.add_event("沒指定時間", 0, [], {"due_date": "2026-11-18", "remind": 1440})
+	var plan := NotifyPlan.build(g, st, today, now, bias, today, 0.0)
+	var events := plan.filter(func(it): return it.kind == NotifyPlan.KIND_EVENT)
+	check(events.size() == 2, "只排還沒到、有設提醒的事件（%d）" % events.size())
+	check(events[1].id == 1000 + a.id and events[1].at == NotifyPlan.to_unix("2026-11-17", 9 * 60 + 30, bias), "提前 1 小時")
+	check(events[0].id == 1000 + b.id and events[0].at == NotifyPlan.to_unix("2026-11-17", 9 * 60, bias), "沒指定時間：前一天早上 9 點")
+	var daily := plan.filter(func(it): return it.kind == NotifyPlan.KIND_DAILY)
+	check(daily.size() == 2 and daily[0].at == NotifyPlan.to_unix(today, 21 * 60, bias), "今天和明天晚上 9 點的每日小提醒")
+	var fade := plan.filter(func(it): return it.kind == NotifyPlan.KIND_FADE)
+	check(fade.size() == 1 and fade[0].at == NotifyPlan.to_unix("2026-11-18", 20 * 60, bias), "最後照顧後第 3 天開始褪色，前一晚預告")
+	for i in plan.size() - 1:
+		check(plan[i].at <= plan[i + 1].at, "依時間排序")
+	# 今天完成過事件：今天不提醒
+	g.complete_event(g.add_event("喝水", 0).id, today, now, _rng())
+	var after := NotifyPlan.build(g, st, today, now, bias, today, 0.0)
+	check(after.filter(func(it): return it.kind == NotifyPlan.KIND_DAILY).size() == 1, "今天做過事，只剩明天的每日提醒")
+	# 已經在褪色：不預告；關掉事件提醒
+	var off := NotifyPlan.clean_settings({"events": false, "daily": false})
+	var quiet := NotifyPlan.build(g, off, today, now, bias, today, 0.25)
+	check(quiet.is_empty(), "全部關掉、已經在褪色時沒有通知")
+	var mid := NotifyPlan.clean_settings({"daily": true, "daily_time": 23 * 60 + 30})
+	var shifted := NotifyPlan.build(GameData.new(), mid, today, now, bias, "", 0.0)
+	check(shifted[0].at == NotifyPlan.to_unix("2026-11-17", 8 * 60, bias), "每日提醒落在安靜時段：延到隔天 8 點")
+
+
+func test_notify_settings_saved() -> void:
+	var g := GameData.new()
+	check(g.notify.events and not g.notify.daily and g.notify.fade, "預設：事件提醒開、每日提醒關、褪色預告開")
+	g.notify.daily = true
+	g.notify.daily_time = 20 * 60
+	var back := GameData.from_dict(g.to_dict())
+	check(back.notify.daily and back.notify.daily_time == 1200, "通知設定會存檔")
+	check(NotifyPlan.clean_settings({"daily_time": 1500}).daily_time == 60, "時間超過一天會繞回來")
+	check(GameData.from_dict({}).notify == NotifyPlan.DEFAULTS, "舊存檔用預設值")
+
+
 func test_day_cycle_phases() -> void:
 	check(DayCycle.phase(DayCycle.minutes_of(3, 0)) == DayCycle.NIGHT, "凌晨 3 點是夜晚")
 	check(DayCycle.phase(DayCycle.minutes_of(7, 0)) == DayCycle.MORNING, "早上 7 點是清晨")

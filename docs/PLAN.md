@@ -254,6 +254,7 @@ Pro 採每月訂閱，主要賣點是「每天完成事件拿素材沒有上限�
 - **晝夜（v0.4.0）**：`DayCycle` 依一天中的分鐘數在關鍵時間點之間內插，算出島的染色（乘在動植物與方塊顏色上）、紙張與點點顏色、夜晚程度；夜晚程度 ≥ 0.5 時介面換深色主題。`Game` 每 30 秒發出 `daytime_changed`，測試與截圖可用 `clock_override` 固定時間
 - **介面主題（v0.4.0）**：`UiKit` 依日夜產生 Theme，卡片、按鈕用 type variation（Card、Bar、Soft、AccentButton、FlatButton、ToolButton、TabButton、IconButton、Muted、Accent），換主題時整個畫面一起更新；自己畫的元件（圖示、小方塊、月曆）在主題改變時重畫
 - **事件排程（v0.5.0）**：事件多 `due_date`、`due_time`、`repeat`、`remind`、`streak` 欄位，舊存檔視為隨時都能做。重複事件只存「下一次」這一筆，完成或跳過時才產生下一筆；月曆上未來的日子用規則推算，不另外存。準時（在預定日當天或之前）完成才累積連續次數，晚了就從 1 重算
+- **提醒通知（v0.6.0）**：`NotifyPlan` 依事件與設定算出接下來要發的通知（事件提醒、今天與明天的每日小提醒、褪色預告），每次存檔與離開遊戲時整批交給 `Notifier` 換掉。Android 用自己寫的 Godot 外掛 `IslogNotify`（`android_plugin/`）：AlarmManager 的 `setAndAllowWhileIdle` 排程（不需要精確鬧鐘權限，可能晚幾分鐘），時間到由 BroadcastReceiver 發通知，點通知打開遊戲；重新開機後重排。電腦版只記錄不發送。事件提醒照玩家設定的時間發，不受安靜時段影響
 - **棲地消失**：動物腳下的方塊被移除或蓋住時，換到最近的同類方塊；完全沒有同類方塊就冒問號，一天後離開（水被移除時的小魚也照這個規則）
 
 ## 待決事項

@@ -111,6 +111,9 @@ func _mode_bar() -> Control:
 	var account := UiKit.button("帳號與備份", func(): AccountDialog.open(_modal_host()))
 	account.add_theme_font_size_override("font_size", 22)
 	row.add_child(account)
+	var notify := UiKit.button("通知", func(): NotifyDialog.open(_modal_host()))
+	notify.add_theme_font_size_override("font_size", 22)
+	row.add_child(notify)
 	return row
 
 
