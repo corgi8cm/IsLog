@@ -641,6 +641,41 @@ func test_animals_need_habitat_and_come_one_at_a_time() -> void:
 		check(island.is_habitat(a.species, a.pos), "動物站在自己的棲地上")
 
 
+func test_day_cycle_phases() -> void:
+	check(DayCycle.phase(DayCycle.minutes_of(3, 0)) == DayCycle.NIGHT, "凌晨 3 點是夜晚")
+	check(DayCycle.phase(DayCycle.minutes_of(7, 0)) == DayCycle.MORNING, "早上 7 點是清晨")
+	check(DayCycle.phase(DayCycle.minutes_of(12, 0)) == DayCycle.DAY, "中午是白天")
+	check(DayCycle.phase(DayCycle.minutes_of(18, 0)) == DayCycle.EVENING, "傍晚 6 點是黃昏")
+	check(DayCycle.phase(DayCycle.minutes_of(22, 0)) == DayCycle.NIGHT, "晚上 10 點是夜晚")
+	check(DayCycle.is_night(DayCycle.minutes_of(23, 30)) and not DayCycle.is_night(DayCycle.minutes_of(10, 0)), "夜晚判斷")
+	check(DayCycle.tint(DayCycle.minutes_of(12, 0)).is_equal_approx(Color.WHITE), "白天不染色")
+	check(DayCycle.minutes_of(25, 0) == 60, "超過 24 小時會繞回來")
+	# 時段之間是漸變：每分鐘的顏色差很小
+	var biggest := 0.0
+	for m in 1440:
+		var a := DayCycle.paper(m)
+		var b := DayCycle.paper((m + 1) % 1440)
+		biggest = maxf(biggest, absf(a.r - b.r) + absf(a.g - b.g) + absf(a.b - b.b))
+	check(biggest < 0.05, "紙張顏色平滑漸變（每分鐘最多差 %.3f）" % biggest)
+	var amount := DayCycle.night_amount(DayCycle.minutes_of(19, 0))
+	check(amount > 0.0 and amount < 1.0, "傍晚到夜晚之間是漸變")
+
+
+func test_sleepers_stay_still_at_night() -> void:
+	var island := _island_with({Vector3i(0, 0, 0): Materials.DIRT, Vector3i(1, 0, 0): Materials.DIRT,
+		Vector3i(0, 1, 0): Materials.DIRT, Vector3i(1, 1, 0): Materials.DIRT})
+	island.animals.append({"id": 1, "species": "sheep", "variant": "", "pos": Vector3i(0, 0, 0), "arrived": 0, "confused_since": 0})
+	for i in 20:
+		island.wander(_rng(i), true)
+	check(island.animals[0].pos == Vector3i(0, 0, 0), "綿羊晚上睡覺不走動")
+	var moved := false
+	for i in 20:
+		island.wander(_rng(i), false)
+		moved = moved or island.animals[0].pos != Vector3i(0, 0, 0)
+	check(moved, "白天會走動")
+	check(not Catalog.sleeps_at_night("fish") and not Catalog.sleeps_at_night("duck"), "小魚、鴨子晚上照樣游")
+
+
 func test_animal_variants_are_rare_and_saved() -> void:
 	for species in Catalog.animal_ids():
 		if species == "turtle":

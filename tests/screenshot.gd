@@ -148,6 +148,16 @@ func _run() -> void:
 	remote.device = "Pixel 9"
 	game.cloud_choice_needed.emit(game.export_summary(), remote)
 	await _shot(out_dir, "account_choice.png")
+	main.get_child(-1).queue_free()
+	# 夜晚的介面
+	game.set_clock(22 * 60)
+	main.call("_show_page", 0)
+	await _shot(out_dir, "events_night.png")
+	main.call("_show_page", 2)
+	await _shot(out_dir, "review_night.png")
+	main.call("_show_page", 1)
+	_press(main, "圖鑑")
+	await _shot(out_dir, "encyclopedia_night.png")
 	_remove_dir("user://screenshot_demo")
 	quit()
 

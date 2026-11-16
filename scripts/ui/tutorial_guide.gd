@@ -4,7 +4,6 @@ extends Control
 
 const DIM := Color(0.06, 0.1, 0.16, 0.62)
 const HOLE_PAD := 10.0
-const BUBBLE_BG := Color("fffdf6")
 
 var main: Control
 var _target := Rect2()
@@ -41,7 +40,7 @@ func _ready() -> void:
 	mouse_filter = MOUSE_FILTER_STOP
 
 	_bubble = PanelContainer.new()
-	var sb := UiKit.box(BUBBLE_BG, 22, Color("2b3a4a"))
+	var sb := UiKit.box(UiKit.color("panel"), 22, UiKit.color("border"), 2)
 	sb.set_border_width_all(3)
 	sb.set_content_margin_all(18)
 	_bubble.add_theme_stylebox_override("panel", sb)
@@ -148,12 +147,12 @@ func _update() -> void:
 			c.queue_free()
 		for b in buttons:
 			var btn := UiKit.button(b[0], b[1])
-			btn.add_theme_stylebox_override("normal", UiKit.box(Color("d8f0c8"), 14))
+			btn.theme_type_variation = "AccentButton"
 			_buttons.add_child(btn)
 		var skip := UiKit.button("略過教學", Game.skip_tutorial)
 		skip.add_theme_font_size_override("font_size", 20)
-		skip.add_theme_stylebox_override("normal", UiKit.box(Color(0, 0, 0, 0), 10))
-		skip.add_theme_color_override("font_color", Color("8a97a5"))
+		skip.theme_type_variation = "FlatButton"
+		skip.add_theme_color_override("font_color", UiKit.color("muted"))
 		var spacer := Control.new()
 		spacer.size_flags_horizontal = SIZE_EXPAND_FILL
 		_buttons.add_child(spacer)
@@ -234,4 +233,4 @@ func _draw_arrow(r: Rect2) -> void:
 	var outline := pts.duplicate()
 	outline.append(pts[0])
 	draw_colored_polygon(pts, Color("ffd54f"))
-	draw_polyline(outline, Color("2b3a4a"), 4.0, true)
+	draw_polyline(outline, Color("5a4636"), 4.0, true)

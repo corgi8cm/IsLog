@@ -2,7 +2,6 @@ class_name AccountDialog
 extends RefCounted
 ## 「帳號與備份」：綁定帳號、立即備份、解除綁定；兩邊都有進度時讓玩家選要留哪一份。
 
-const MUTED := Color("6b7480")
 
 
 static func open(host: Control) -> void:
@@ -35,7 +34,7 @@ static func _fill(content: VBoxContainer, cloud: CloudSync) -> void:
 	content.add_child(service)
 
 	var card := PanelContainer.new()
-	card.add_theme_stylebox_override("panel", UiKit.box(Color("e8f5e0") if cloud.linked else Color("f1f4f7"), 14))
+	card.theme_type_variation = "Card" if cloud.linked else "Soft"
 	content.add_child(card)
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 6)
@@ -50,7 +49,7 @@ static func _fill(content: VBoxContainer, cloud: CloudSync) -> void:
 
 	if cloud.message != "":
 		var msg := UiKit.label(cloud.message, 24)
-		msg.add_theme_color_override("font_color", Color("c0392b") if cloud.status == "error" else Color("4f8a34"))
+		msg.add_theme_color_override("font_color", UiKit.color("danger") if cloud.status == "error" else UiKit.color("accent"))
 		content.add_child(msg)
 
 	if cloud.has_pending_choice():
@@ -65,7 +64,7 @@ static func _fill(content: VBoxContainer, cloud: CloudSync) -> void:
 		now_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		now_btn.custom_minimum_size = Vector2(0, 72)
 		now_btn.disabled = cloud.is_busy()
-		now_btn.add_theme_stylebox_override("normal", UiKit.box(Color("d8f0c8"), 14))
+		now_btn.theme_type_variation = "AccentButton"
 		row.add_child(now_btn)
 		var off := UiKit.button("解除綁定", cloud.unlink)
 		off.custom_minimum_size = Vector2(0, 72)
@@ -77,7 +76,7 @@ static func _fill(content: VBoxContainer, cloud: CloudSync) -> void:
 		link.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		link.custom_minimum_size = Vector2(0, 72)
 		link.disabled = cloud.is_busy()
-		link.add_theme_stylebox_override("normal", UiKit.box(Color("d8f0c8"), 14))
+		link.theme_type_variation = "AccentButton"
 		row.add_child(link)
 
 
@@ -96,7 +95,7 @@ static func open_choice(host: Control, local_summary: Dictionary, remote: Dictio
 	]
 	for o in options:
 		var card := PanelContainer.new()
-		card.add_theme_stylebox_override("panel", UiKit.box(Color("f1f4f7"), 14))
+		card.theme_type_variation = "Soft"
 		body.add_child(card)
 		var col := VBoxContainer.new()
 		col.add_theme_constant_override("separation", 8)
@@ -109,7 +108,7 @@ static func open_choice(host: Control, local_summary: Dictionary, remote: Dictio
 			Game.cloud.resolve(keep_local)
 			overlay.queue_free())
 		b.custom_minimum_size = Vector2(0, 64)
-		b.add_theme_stylebox_override("normal", UiKit.box(Color("d8f0c8"), 14))
+		b.theme_type_variation = "AccentButton"
 		col.add_child(b)
 	body.add_child(_muted("還不確定的話可以先關閉，之後在「帳號與備份」再選。"))
 
@@ -118,5 +117,5 @@ static func _muted(text: String) -> Label:
 	var l := UiKit.label(text, 22)
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	l.custom_minimum_size = Vector2(540, 0)
-	l.add_theme_color_override("font_color", MUTED)
+	l.theme_type_variation = "Muted"
 	return l

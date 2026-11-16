@@ -22,7 +22,7 @@ static func open(host: Control) -> void:
 	var body: VBoxContainer = parts[1]
 	var seen: Dictionary = Game.data.seen_animals
 	var progress := UiKit.label("已發現 %d / %d 種動物" % [seen.size(), Catalog.animal_ids().size()], 24)
-	progress.add_theme_color_override("font_color", Color("6b7480"))
+	progress.theme_type_variation = "Muted"
 	body.add_child(progress)
 
 	var scroll := ScrollContainer.new()
@@ -40,8 +40,12 @@ static func open(host: Control) -> void:
 		var is_seen := seen.has(species)
 		var card := PanelContainer.new()
 		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var bg := Materials.top_color(Catalog.animal_habitat(species)).lightened(0.6)
-		card.add_theme_stylebox_override("panel", UiKit.box(bg if is_seen else Color("eef1f4"), 14))
+		# 來過的動物：卡片框線是牠住的地方的顏色
+		if is_seen:
+			card.add_theme_stylebox_override("panel", UiKit.box(UiKit.color("panel"), 18,
+				Materials.side_color(Catalog.animal_habitat(species)), 3))
+		else:
+			card.theme_type_variation = "Soft"
 		grid.add_child(card)
 		var col := VBoxContainer.new()
 		col.add_theme_constant_override("separation", 4)
@@ -59,5 +63,5 @@ static func open(host: Control) -> void:
 		var hint := UiKit.label(info, 20)
 		hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		hint.add_theme_color_override("font_color", Color("6b7480"))
+		hint.theme_type_variation = "Muted"
 		col.add_child(hint)

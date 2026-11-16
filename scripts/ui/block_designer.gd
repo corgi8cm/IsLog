@@ -100,7 +100,7 @@ static func open(host: Control, start_base: String = Materials.DIRT) -> void:
 	}
 
 	var slots := UiKit.label("設計格 %d / %d" % [Game.data.custom_designs.size(), Game.data.design_slots()], 22)
-	slots.add_theme_color_override("font_color", Color("6b7480"))
+	slots.theme_type_variation = "Muted"
 	body.add_child(slots)
 
 	# 基礎類型
@@ -147,7 +147,7 @@ static func open(host: Control, start_base: String = Materials.DIRT) -> void:
 
 	body.add_child(face_row)
 	for face in [[CustomBlocks.FACE_TOP, "頂面"], [CustomBlocks.FACE_SIDE, "側面（四面共用）"]]:
-		var b := UiKit.tool_button(face_group, Color("eef2f5"))
+		var b := UiKit.tool_button(face_group, Color("f3e6d0"))
 		b.text = face[1]
 		b.custom_minimum_size = Vector2(0, 56)
 		b.button_pressed = face[0] == CustomBlocks.FACE_TOP
@@ -193,7 +193,7 @@ static func open(host: Control, start_base: String = Materials.DIRT) -> void:
 		sw.custom_minimum_size = Vector2(42, 42)
 		sw.add_theme_stylebox_override("normal", UiKit.box(c, 8, Color(0, 0, 0, 0.15)))
 		sw.add_theme_stylebox_override("hover", UiKit.box(c, 8, Color(0, 0, 0, 0.3)))
-		sw.add_theme_stylebox_override("pressed", UiKit.box(c, 8, Color("2b3a4a")))
+		sw.add_theme_stylebox_override("pressed", UiKit.box(c, 8, UiKit.color("accent")))
 		sw.pressed.connect(func(): canvas.color = c)
 		palette.add_child(sw)
 		if hex == "7cc35a":
@@ -204,7 +204,7 @@ static func open(host: Control, start_base: String = Materials.DIRT) -> void:
 		if Game.save_design(state.base, state.top, state.side) >= 0:
 			overlay.queue_free())
 	save.custom_minimum_size = Vector2(0, 72)
-	save.add_theme_stylebox_override("normal", UiKit.box(Color("d8f0c8"), 14))
+	save.theme_type_variation = "AccentButton"
 	body.add_child(save)
 	if not Game.data.can_add_design():
 		save.disabled = true

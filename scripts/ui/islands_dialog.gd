@@ -9,12 +9,12 @@ static func open(host: Control) -> void:
 	var body: VBoxContainer = parts[1]
 	var note := UiKit.label("一次只蓋一座島。收起來的島時間會停止，不會褪色。", 22)
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	note.add_theme_color_override("font_color", Color("6b7480"))
+	note.theme_type_variation = "Muted"
 	body.add_child(note)
 
 	for s in Game.island_summaries():
 		var card := PanelContainer.new()
-		card.add_theme_stylebox_override("panel", UiKit.box(Color("e8f5e0") if s.current else Color("f1f4f7"), 14))
+		card.theme_type_variation = "Card" if s.current else "Soft"
 		body.add_child(card)
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 10)
@@ -24,11 +24,11 @@ static func open(host: Control) -> void:
 		row.add_child(col)
 		col.add_child(UiKit.label(s.name, 28))
 		var info := UiKit.label("方塊 %d · 植物 %d · 動物 %d" % [s.blocks, s.plants, s.animals], 22)
-		info.add_theme_color_override("font_color", Color("6b7480"))
+		info.theme_type_variation = "Muted"
 		col.add_child(info)
 		if s.current:
 			var cur := UiKit.label("目前", 24)
-			cur.add_theme_color_override("font_color", Color("4f8a34"))
+			cur.theme_type_variation = "Accent"
 			cur.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 			row.add_child(cur)
 		else:
@@ -42,9 +42,9 @@ static func open(host: Control) -> void:
 			Game.create_island()
 			overlay.queue_free())
 		b.custom_minimum_size = Vector2(0, 72)
-		b.add_theme_stylebox_override("normal", UiKit.box(Color("d8f0c8"), 14))
+		b.theme_type_variation = "AccentButton"
 		body.add_child(b)
 	else:
 		var left := UiKit.label("再完成 %d 件事件，就能解鎖新的島。" % Game.data.events_to_next_island(), 24)
-		left.add_theme_color_override("font_color", Color("6b7480"))
+		left.theme_type_variation = "Muted"
 		body.add_child(left)
