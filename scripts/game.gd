@@ -86,12 +86,37 @@ func set_clock(minutes: int) -> void:
 
 # --- 事件 ---------------------------------------------------------------
 
-func add_event(title: String, subtask_titles: Array = []) -> Dictionary:
+## when：日期、時間、重複、提醒（見 Schedule），不給就是隨時都能做。
+func add_event(title: String, subtask_titles: Array = [], when: Dictionary = {}) -> Dictionary:
 	var ev := data.add_event(title, now(), subtask_titles)
 	if not ev.is_empty():
+		if not when.is_empty():
+			data.set_schedule(ev.id, when, today())
 		_tutorial("event_added")
 		_commit()
 	return ev
+
+
+func set_schedule(id: int, when: Dictionary) -> bool:
+	var ok := data.set_schedule(id, when, today())
+	if ok:
+		_commit()
+	return ok
+
+
+## 重複事件跳過這一次（不給素材）。
+func skip_occurrence(id: int) -> bool:
+	var ok := not data.skip_occurrence(id, today()).is_empty()
+	if ok:
+		_commit()
+	return ok
+
+
+func move_to_today(id: int) -> bool:
+	var ok := data.move_to_today(id, today())
+	if ok:
+		_commit()
+	return ok
 
 
 ## 完成事件：給素材與植物、照顧島嶼（恢復顏色），並讓一隻動物來訪。

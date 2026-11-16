@@ -641,6 +641,124 @@ func test_animals_need_habitat_and_come_one_at_a_time() -> void:
 		check(island.is_habitat(a.species, a.pos), "動物站在自己的棲地上")
 
 
+func test_schedule_dates() -> void:
+	check(Schedule.add_days("2026-12-31", 1) == "2027-01-01", "跨年加一天")
+	check(Schedule.add_days("2026-03-01", -1) == "2026-02-28", "往前一天")
+	check(Schedule.days_between("2026-11-01", "2026-11-16") == 15, "相差天數")
+	check(Schedule.weekday("2026-11-16") == 1, "2026-11-16 是星期一")
+	check(Schedule.is_valid_date("2028-02-29") and not Schedule.is_valid_date("2026-02-29"), "閏年判斷")
+	check(not Schedule.is_valid_date("2026-1-5") and not Schedule.is_valid_date("abc"), "格式不對的日期")
+	check(Schedule.date_label("2026-11-17", "2026-11-16") == "明天", "明天")
+	check(Schedule.date_label("2026-11-20", "2026-11-16") == "11/20（五）", "其他日期顯示月日與星期")
+	check(Schedule.time_text(8 * 60 + 5) == "08:05", "時間格式")
+
+
+func test_schedule_repeat_rules() -> void:
+	var daily := Schedule.make_rule(Schedule.DAILY)
+	check(Schedule.next_date(daily, "2026-11-16", "2026-11-16") == "2026-11-17", "每天：下一天")
+	check(Schedule.next_date(daily, "2026-11-20", "2026-11-16") == "2026-11-20", "還沒開始時從第一天算")
+	var every3 := Schedule.make_rule(Schedule.EVERY, [], 3)
+	check(Schedule.next_date(every3, "2026-11-16", "2026-11-16") == "2026-11-19", "每 3 天")
+	check(Schedule.next_date(every3, "2026-11-16", "2026-11-20") == "2026-11-22", "每 3 天：錯過後對齊原本的節奏")
+	var mwf := Schedule.make_rule(Schedule.WEEKLY, [5, 1, 3, 3])
+	check(mwf.days == [1, 3, 5], "星期幾去重複並排序")
+	check(Schedule.next_date(mwf, "2026-11-16", "2026-11-16") == "2026-11-18", "一三五：星期一的下一次是星期三")
+	check(Schedule.next_date(mwf, "2026-11-16", "2026-11-20") == "2026-11-23", "一三五：星期五的下一次是下週一")
+	var monthly := Schedule.make_rule(Schedule.MONTHLY)
+	check(Schedule.next_date(monthly, "2026-01-31", "2026-01-31") == "2026-02-28", "每月 31 號遇到二月改月底")
+	check(Schedule.next_date(monthly, "2026-01-31", "2026-02-28") == "2026-03-31", "三月回到 31 號")
+	check(Schedule.next_date(monthly, "2026-11-16", "2026-12-20") == "2027-01-16", "每月跨年")
+	check(Schedule.occurs_on(mwf, "2026-11-16", "2026-11-25") and not Schedule.occurs_on(mwf, "2026-11-16", "2026-11-24"), "一三五：哪天有")
+	check(not Schedule.occurs_on(daily, "2026-11-16", "2026-11-15"), "開始前沒有")
+	check(Schedule.describe(mwf) == "每週一、三、五", "描述每週")
+	check(Schedule.describe(Schedule.make_rule(Schedule.WEEKLY, [1, 2, 3, 4, 5])) == "平日", "描述平日")
+	check(Schedule.describe(monthly, "2026-11-16") == "每月 16 號", "描述每月")
+	check(Schedule.clean_rule({"kind": "yearly"}).is_empty() and Schedule.clean_rule("x").is_empty(), "不認得的規則當作不重複")
+	check(Schedule.make_rule(Schedule.EVERY, [], 1).every == 2, "每隔幾天至少 2 天")
+
+
+func test_event_schedule_and_groups() -> void:
+	var g := GameData.new()
+	var today := "2026-11-16"
+	var a := g.add_event("喝水", 0)
+	check(a.due_date == "" and a.due_time == -1 and a.repeat.is_empty(), "預設隨時都能做")
+	var b := g.add_event("看牙醫", 0, [], {"due_date": "2026-11-20", "due_time": 9 * 60 + 30, "remind": 60})
+	check(b.due_date == "2026-11-20" and b.due_time == 570 and b.remind == 60, "新增時設定日期、時間、提醒")
+	check(not g.set_schedule(b.id, {"due_date": "2026-13-01"}), "不合法的日期不接受")
+	check(g.set_schedule(b.id, {"remind": 7}) and b.remind == -1, "不在選項裡的提醒變成不提醒")
+	var c := g.add_event("散步", 0, [], {"repeat": {"kind": "daily"}})
+	check(c.due_date != "", "重複事件一定有日期")
+	g.set_schedule(a.id, {"due_time": 600})
+	check(a.due_time == -1, "沒有日期就不能只設時間")
+	var d := g.add_event("繳費", 0, [], {"due_date": "2026-11-10"})
+	var e := g.add_event("買菜", 0, [], {"due_date": "2026-11-17"})
+	check(Schedule.group(a, today) == Schedule.TODAY, "隨時的事件算今天")
+	check(Schedule.group(d, today) == Schedule.OVERDUE, "過了日期算之前沒做完")
+	check(Schedule.group(e, today) == Schedule.TOMORROW, "明天")
+	check(Schedule.group(b, today) == Schedule.LATER, "之後")
+	check(g.move_to_today(d.id, today) and d.due_date == today, "之前沒做完改到今天")
+	check(not g.move_to_today(e.id, today), "還沒到的事件不用改")
+	check(Schedule.summary(b, today) == "11/20（五） 09:30", "日期時間摘要")
+	var back := GameData.from_dict(g.to_dict())
+	var b2 := back.find_event(b.id)
+	check(b2.due_date == "2026-11-20" and b2.due_time == 570 and b2.repeat.is_empty(), "日期時間會存檔")
+	check(back.find_event(c.id).repeat.kind == "daily", "重複規則會存檔")
+	var old := {"events": [{"id": 1, "title": "舊事件", "done_date": ""}]}
+	var from_old := GameData.from_dict(old)
+	check(from_old.events[0].due_date == "" and from_old.events[0].repeat.is_empty(), "舊存檔的事件是隨時都能做")
+
+
+func test_repeating_event_spawns_next_and_streak() -> void:
+	var g := GameData.new()
+	var rng := _rng()
+	var ev := g.add_event("散步", 0, ["換鞋"], {"due_date": "2026-11-16", "due_time": 420,
+		"repeat": {"kind": "daily"}, "remind": 10})
+	var r := g.complete_event(ev.id, "2026-11-16", 0, rng)
+	check(r.next > 0, "完成後排好下一次")
+	var nxt := g.find_event(r.next)
+	check(nxt.due_date == "2026-11-17" and nxt.due_time == 420 and nxt.remind == 10, "下一次在明天、同樣的時間與提醒")
+	check(nxt.subtasks.size() == 1 and nxt.subtasks[0].done_date == "", "子事件一起帶過去")
+	check(ev.streak == 1 and nxt.streak == 1, "連續 1 次")
+	var r2 := g.complete_event(nxt.id, "2026-11-17", 0, rng)
+	check(g.find_event(r2.next).streak == 2, "準時完成連續 2 次")
+	# 晚了兩天才完成：連續紀錄重來，下一次排在完成之後
+	var third := g.find_event(r2.next)
+	var r3 := g.complete_event(third.id, "2026-11-20", 0, rng)
+	var fourth := g.find_event(r3.next)
+	check(third.streak == 1 and fourth.due_date == "2026-11-21", "遲到完成：連續重新算，下一次在完成隔天")
+	# 提早完成：下一次還是照規則排
+	var r4 := g.complete_event(fourth.id, "2026-11-19", 0, rng)
+	check(g.find_event(r4.next).due_date == "2026-11-22", "提早完成，下一次照原本的節奏")
+	var plain := g.add_event("一次性", 0)
+	check(g.complete_event(plain.id, "2026-11-16", 0, rng).next == -1, "不重複的事件不會再出現")
+
+
+func test_skip_occurrence() -> void:
+	var g := GameData.new()
+	var ev := g.add_event("運動", 0, [], {"due_date": "2026-11-16", "repeat": {"kind": "weekly", "days": [1, 4]}})
+	ev.streak = 5
+	var inv_before := g.inventory.duplicate()
+	var same := g.skip_occurrence(ev.id, "2026-11-16")
+	check(same.id == ev.id and ev.due_date == "2026-11-19", "跳過星期一，排到星期四")
+	check(ev.streak == 0 and g.inventory == inv_before and g.total_completed == 0, "跳過不給素材、連續歸零")
+	ev.due_date = "2026-11-02"
+	g.skip_occurrence(ev.id, "2026-11-16")
+	check(ev.due_date == "2026-11-16", "很久以前的跳過：排到今天以後最近的一次")
+	var plain := g.add_event("一次性", 0)
+	check(g.skip_occurrence(plain.id, "2026-11-16").is_empty(), "不重複的事件不能跳過")
+
+
+func test_planned_on_projects_repeats() -> void:
+	var g := GameData.new()
+	g.add_event("倒垃圾", 0, [], {"due_date": "2026-11-16", "repeat": {"kind": "weekly", "days": [1, 3]}})
+	g.add_event("看牙醫", 0, [], {"due_date": "2026-11-25", "due_time": 600})
+	g.add_event("隨時", 0)
+	check(g.planned_on("2026-11-18", "2026-11-16").size() == 1, "星期三推算出倒垃圾")
+	check(g.planned_on("2026-11-19", "2026-11-16").is_empty(), "星期四沒有")
+	var wed := g.planned_on("2026-11-25", "2026-11-16")
+	check(wed.size() == 2 and wed[0].title == "看牙醫", "同一天有時間的排前面")
+
+
 func test_day_cycle_phases() -> void:
 	check(DayCycle.phase(DayCycle.minutes_of(3, 0)) == DayCycle.NIGHT, "凌晨 3 點是夜晚")
 	check(DayCycle.phase(DayCycle.minutes_of(7, 0)) == DayCycle.MORNING, "早上 7 點是清晨")

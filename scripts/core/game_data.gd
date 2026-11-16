@@ -12,7 +12,8 @@ const SAVE_VERSION := 2
 
 var inventory: Dictionary = Materials.empty_inventory()
 var plants: Dictionary = Catalog.empty_plant_inventory()
-## 每個事件：{id, title, created, done_date, done_at, rewards, plant, visitor, subtasks}
+## 每個事件：{id, title, created, done_date, done_at, rewards, plant, visitor, subtasks,
+##   due_date, due_time, repeat, remind, streak}（日期、時間、重複的意思見 Schedule）
 ## 每個子事件：{id, title, done_date, done_at, rewards, self_done}
 ## done_date 為空字串代表尚未完成；self_done 代表玩家自己打勾（直接完成母事件時一起打勾的為 false）。
 var events: Array = []
@@ -93,7 +94,8 @@ func find_design(design_id: int) -> Dictionary:
 	return {}
 
 
-func add_event(title: String, now_unix: int, subtask_titles: Array = []) -> Dictionary:
+## when：{due_date, due_time, repeat, remind}，可以只給一部分；沒給就是隨時都能做。
+func add_event(title: String, now_unix: int, subtask_titles: Array = [], when: Dictionary = {}) -> Dictionary:
 	title = title.strip_edges()
 	if title.is_empty():
 		return {}
@@ -107,12 +109,100 @@ func add_event(title: String, now_unix: int, subtask_titles: Array = []) -> Dict
 		"plant": "",
 		"visitor": "",
 		"subtasks": [],
+		"due_date": "",
+		"due_time": -1,
+		"repeat": {},
+		"remind": -1,
+		"streak": 0,
 	}
 	next_id += 1
 	events.append(ev)
 	for t in subtask_titles:
 		add_subtask(ev.id, str(t))
+	if not when.is_empty():
+		set_schedule(ev.id, when)
 	return ev
+
+
+# --- 日期、時間、重複 -------------------------------------------------------
+
+## 設定還沒完成的事件的日期、時間、重複與提醒。重複的事件一定要有日期（沒給就用 today）。
+func set_schedule(id: int, when: Dictionary, today: String = "") -> bool:
+	var ev := find_event(id)
+	if ev.is_empty() or ev.done_date != "":
+		return false
+	var date := str(when.get("due_date", ev.due_date))
+	if date != "" and not Schedule.is_valid_date(date):
+		return false
+	var rule := Schedule.clean_rule(when.get("repeat", ev.repeat))
+	if not rule.is_empty() and date == "":
+		date = today if today != "" else Time.get_date_string_from_system()
+	var t := int(when.get("due_time", ev.due_time))
+	ev.due_date = date
+	ev.due_time = clampi(t, 0, 1439) if t >= 0 and date != "" else -1
+	ev.repeat = rule
+	var r := int(when.get("remind", ev.remind))
+	ev.remind = r if r in Schedule.REMIND_CHOICES and date != "" else -1
+	if rule.is_empty():
+		ev.streak = 0
+	return true
+
+
+## 重複事件的下一次：同樣的標題、子事件、時間與提醒，日期換成規則的下一天。
+func _spawn_next(ev: Dictionary, after: String, streak: int) -> Dictionary:
+	var titles: Array = ev.subtasks.map(func(s): return s.title)
+	var next_date := Schedule.next_date(ev.repeat, ev.due_date, after)
+	var nxt := add_event(ev.title, int(ev.created), titles)
+	nxt.due_date = next_date
+	nxt.due_time = ev.due_time
+	nxt.repeat = ev.repeat.duplicate(true)
+	nxt.remind = ev.remind
+	nxt.streak = streak
+	return nxt
+
+
+## 跳過這一次重複事件：不給素材，直接排到下一次，連續紀錄歸零。回傳下一次的事件。
+func skip_occurrence(id: int, today: String) -> Dictionary:
+	var ev := find_event(id)
+	if ev.is_empty() or ev.done_date != "" or not Schedule.is_repeating(ev):
+		return {}
+	var after: String = ev.due_date if ev.due_date >= today else Schedule.add_days(today, -1)
+	ev.due_date = Schedule.next_date(ev.repeat, ev.due_date, after)
+	ev.streak = 0
+	for sub in ev.subtasks:
+		sub.done_date = ""
+		sub.done_at = 0
+		sub.rewards = []
+		sub.self_done = false
+	return ev
+
+
+## 之前沒做完的事件改到今天。
+func move_to_today(id: int, today: String) -> bool:
+	var ev := find_event(id)
+	if ev.is_empty() or ev.done_date != "" or ev.due_date == "" or ev.due_date >= today:
+		return false
+	if Schedule.is_repeating(ev):
+		ev.streak = 0
+	ev.due_date = today
+	return true
+
+
+## 某一天預定要做的事（含重複事件推算出來的未來日子），給月曆用。
+## 回傳 [{title, time, repeat: bool, id}]；過去的日子不推算。
+func planned_on(date: String, today: String) -> Array:
+	var out: Array = []
+	for ev in pending_events():
+		var due: String = ev.due_date
+		if due == "":
+			continue
+		var hit := due == date
+		if not hit and Schedule.is_repeating(ev) and date > due and date >= today:
+			hit = Schedule.occurs_on(ev.repeat, due, date)
+		if hit:
+			out.append({"title": ev.title, "time": ev.due_time, "repeat": Schedule.is_repeating(ev), "id": ev.id})
+	out.sort_custom(func(a, b): return (a.time if a.time >= 0 else 9999) < (b.time if b.time >= 0 else 9999))
+	return out
 
 
 func find_event(id: int) -> Dictionary:
@@ -288,7 +378,15 @@ func complete_event(id: int, today: String, now_unix: int, rng: RandomNumberGene
 	ev.done_at = now_unix
 	ev.rewards = rewards
 	ev.plant = plant
-	return {"ok": true, "rewards": rewards, "plant": plant, "capped": rewards.is_empty(), "bonus": bonus}
+	# 重複事件：排好下一次；在預定日當天或之前完成才算連續
+	var next_id_out := -1
+	if Schedule.is_repeating(ev):
+		var on_time: bool = ev.due_date == "" or today <= ev.due_date
+		ev.streak = int(ev.streak) + 1 if on_time else 1
+		var after: String = ev.due_date if ev.due_date > today else today
+		next_id_out = _spawn_next(ev, after, ev.streak).id
+	return {"ok": true, "rewards": rewards, "plant": plant, "capped": rewards.is_empty(), "bonus": bonus,
+		"next": next_id_out}
 
 
 func _roll_day(today: String) -> void:
@@ -380,7 +478,22 @@ static func from_dict(d: Dictionary) -> GameData:
 			"plant": str(raw.get("plant", "")),
 			"visitor": str(raw.get("visitor", "")),
 			"subtasks": subtasks,
+			"due_date": "",
+			"due_time": -1,
+			"repeat": {},
+			"remind": -1,
+			"streak": maxi(0, int(raw.get("streak", 0))),
 		})
+		# v0.5.0 之前的存檔沒有日期欄位：隨時都能做
+		var loaded: Dictionary = g.events.back()
+		var date := str(raw.get("due_date", ""))
+		if Schedule.is_valid_date(date):
+			loaded.due_date = date
+			var t := int(raw.get("due_time", -1))
+			loaded.due_time = t if t >= 0 and t < 1440 else -1
+			loaded.repeat = Schedule.clean_rule(raw.get("repeat", {}))
+			var r := int(raw.get("remind", -1))
+			loaded.remind = r if r in Schedule.REMIND_CHOICES else -1
 		max_id = maxi(max_id, g.events.back().id)
 	g.next_id = maxi(int(d.get("next_id", 1)), max_id + 1)
 	g.daily_date = str(d.get("daily_date", ""))

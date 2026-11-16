@@ -23,6 +23,13 @@ func _run() -> void:
 		for k in (back % 3) + 1:
 			var ev: Dictionary = game.data.add_event(["散步十分鐘", "喝一杯水", "伸展一分鐘"][k], 0)
 			game.data.complete_event(ev.id, date, 0, game.rng)
+	# 有日期、時間、重複的事件
+	var today: String = game.today()
+	var walk: Dictionary = game.add_event("晨間伸展", [], {"due_date": today, "due_time": 7 * 60 + 30, "repeat": {"kind": "daily"}})
+	walk.streak = 6
+	game.add_event("繳電話費", [], {"due_date": Schedule.add_days(today, -2)})
+	game.add_event("倒垃圾", [], {"due_date": Schedule.add_days(today, 1), "due_time": 20 * 60, "repeat": {"kind": "weekly", "days": [1, 3, 5]}})
+	game.add_event("看牙醫", [], {"due_date": Schedule.add_days(today, 4), "due_time": 10 * 60})
 	var room: Dictionary = game.add_event("整理房間", ["收衣服", "擦桌子", "倒垃圾"])
 	game.complete_subtask(room.id, room.subtasks[0].id)
 	var book: Dictionary = game.add_event("讀完一本書", ["第一章", "第二章"])
@@ -84,6 +91,10 @@ func _run() -> void:
 	root.add_child(main)
 	main.get("_pages")[0].call("_toggle_subtasks", room.id)
 	await _shot(out_dir, "events.png")
+	main.get("_pages")[0].set("_pending_when", {"due_date": today, "due_time": 20 * 60, "repeat": {"kind": "weekly", "days": [1, 3, 5]}})
+	_press(main, "設定時間")
+	await _shot(out_dir, "schedule_dialog.png")
+	main.get_child(-1).queue_free()
 	main.call("_show_page", 1)
 	await _shot(out_dir, "island.png")
 	for t in [["morning", 7 * 60], ["evening", 18 * 60], ["night", 22 * 60]]:

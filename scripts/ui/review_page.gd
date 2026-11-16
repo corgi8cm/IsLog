@@ -166,6 +166,9 @@ func _calendar() -> Control:
 			bg = UiKit.color("panel").lerp(acc, lerpf(0.3, 0.85, clampf((n - 1) / 5.0, 0.0, 1.0)))
 		var b := Button.new()
 		b.text = str(day + 1)
+		# 今天以後有預定的事：數字旁邊加一個點
+		if date >= today and not Game.data.planned_on(date, today).is_empty():
+			b.text += "·"
 		b.focus_mode = FOCUS_NONE
 		b.size_flags_horizontal = SIZE_EXPAND_FILL
 		b.custom_minimum_size = Vector2(0, 64)
@@ -202,13 +205,38 @@ func _day_section(date: String) -> Control:
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 8)
 	var entries := Review.entries_on(Game.data, date)
+	var today := Game.today()
+	var planned: Array = Game.data.planned_on(date, today) if date >= today else []
 	var head := _muted("%s · %d 件" % [Review.label(date), entries.size()], 24)
 	col.add_child(head)
-	if entries.is_empty():
-		col.add_child(_muted("這天沒有完成的事件。", 24))
+	if entries.is_empty() and planned.is_empty():
+		col.add_child(_muted("這天沒有完成的事件。" if date <= today else "這天還沒有預定的事。", 24))
 	for e in entries:
 		col.add_child(_entry_card(e))
+	if not planned.is_empty():
+		col.add_child(_muted("預定 · %d 件" % planned.size(), 22))
+		for item in planned:
+			col.add_child(_planned_card(item))
 	return col
+
+
+## 預定要做的事（含重複事件推算出來的日子）。
+func _planned_card(item: Dictionary) -> Control:
+	var panel := PanelContainer.new()
+	panel.theme_type_variation = "Soft"
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	panel.add_child(row)
+	var t := UiKit.label(item.title, 26)
+	t.size_flags_horizontal = SIZE_EXPAND_FILL
+	t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	row.add_child(t)
+	var info := Schedule.time_text(item.time)
+	if item.repeat:
+		info += ("　" if info != "" else "") + "重複"
+	if info != "":
+		row.add_child(_muted(info, 22))
+	return panel
 
 
 func _entry_card(e: Dictionary) -> Control:

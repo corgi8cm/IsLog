@@ -96,6 +96,16 @@ static func draw_glyph(ci: CanvasItem, what: String, col: Color) -> void:
 				ci.draw_circle(Vector2(-10 + i * 10, 0), 3.2, col)
 		"check":
 			ci.draw_polyline(PackedVector2Array([Vector2(-11, 0), Vector2(-3, 8), Vector2(12, -9)]), col, 4, true)
+		"clock":
+			ci.draw_arc(Vector2.ZERO, 14, 0, TAU, 32, col, w, true)
+			ci.draw_line(Vector2.ZERO, Vector2(0, -8), col, w, true)
+			ci.draw_line(Vector2.ZERO, Vector2(6, 4), col, w, true)
+		"bell":
+			ci.draw_arc(Vector2(0, -1), 10, PI, TAU, 16, col, w, true)
+			ci.draw_line(Vector2(-10, -1), Vector2(-12, 10), col, w, true)
+			ci.draw_line(Vector2(10, -1), Vector2(12, 10), col, w, true)
+			ci.draw_line(Vector2(-14, 10), Vector2(14, 10), col, w, true)
+			ci.draw_circle(Vector2(0, 14), 3, col)
 		"account":
 			ci.draw_arc(Vector2(0, -6), 7, 0, TAU, 20, col, w, true)
 			ci.draw_arc(Vector2(0, 16), 14, PI * 1.15, PI * 1.85, 16, col, w, true)
