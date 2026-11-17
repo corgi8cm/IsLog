@@ -9,7 +9,7 @@ const TutorialGuide := preload("res://scripts/ui/tutorial_guide.gd")
 var _pages: Array[Control] = []
 var _tabs: Array[Button] = []
 var _counts := {}
-var _daily: Label
+var _daily: DailyBadge
 var _guide: Control
 var _top_sb: StyleBoxFlat
 var _tab_sb: StyleBoxFlat
@@ -22,13 +22,60 @@ var _tutorial_step := -1
 var _tip_open := false
 
 
+## 背景的點點紙（顏色跟著時段）。
+class Paper extends Control:
+	func _ready() -> void:
+		mouse_filter = MOUSE_FILTER_IGNORE
+		Game.daytime_changed.connect(queue_redraw)
+
+	func _draw() -> void:
+		Doodles.paper(self, Rect2(Vector2.ZERO, size), Game.now_minutes())
+
+
+## 右上角：時段圖示 + 「今日素材」與今天拿到幾件（十顆點）。
+class DailyBadge extends Control:
+	var done := 0
+	var limit := 10
+	var pro := false
+
+	func _ready() -> void:
+		custom_minimum_size = Vector2(172, 56)
+		tooltip_text = "今天完成事件拿到的素材"
+		Game.daytime_changed.connect(queue_redraw)
+
+	func _notification(what: int) -> void:
+		if what == NOTIFICATION_THEME_CHANGED:
+			queue_redraw()
+
+	func _draw() -> void:
+		var minutes := Game.now_minutes()
+		var glyph := "sun"
+		match DayCycle.phase(minutes):
+			DayCycle.MORNING: glyph = "sunrise"
+			DayCycle.EVENING: glyph = "sunset"
+			DayCycle.NIGHT: glyph = "moon"
+		draw_set_transform(Vector2(26, size.y * 0.5))
+		Icon.draw_glyph(self, glyph, UiKit.color("ink"))
+		draw_set_transform(Vector2.ZERO)
+		var font := get_theme_default_font()
+		var ink := UiKit.color("ink")
+		if pro:
+			draw_string(font, Vector2(56, size.y * 0.5 - 4), "今日素材", HORIZONTAL_ALIGNMENT_LEFT, -1, 17, Color(ink, 0.7))
+			draw_string(font, Vector2(56, size.y * 0.5 + 20), "%d 件" % done, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, ink)
+			return
+		draw_string(font, Vector2(56, size.y * 0.5 - 6), "今日素材 %d/%d" % [done, limit], HORIZONTAL_ALIGNMENT_LEFT, -1, 17, Color(ink, 0.7))
+		for i in limit:
+			var c := Vector2(61 + i * 11.4, size.y * 0.5 + 12)
+			draw_circle(c, 4.6, UiKit.color("accent") if i < done else Color(ink, 0.18))
+
+
 func _ready() -> void:
+	UiKit.night = Game.is_night()
 	theme = UiKit.make_theme()
 
-	var bg := ColorRect.new()
-	bg.color = Color("f4f8fb")
-	bg.set_anchors_preset(PRESET_FULL_RECT)
+	var bg := Paper.new()
 	add_child(bg)
+	bg.set_anchors_and_offsets_preset(PRESET_FULL_RECT)
 
 	var col := VBoxContainer.new()
 	col.set_anchors_preset(PRESET_FULL_RECT)
@@ -62,6 +109,7 @@ func _ready() -> void:
 	get_viewport().size_changed.connect(_apply_safe_area)
 
 	Game.changed.connect(_refresh)
+	Game.daytime_changed.connect(_check_night)
 	Game.cloud_choice_needed.connect(func(local_summary: Dictionary, remote: Dictionary):
 		AccountDialog.open_choice(self, local_summary, remote))
 	_show_page(0)
@@ -70,34 +118,57 @@ func _ready() -> void:
 
 func _build_top_bar() -> Control:
 	var panel := PanelContainer.new()
-	_top_sb = UiKit.box(Color.WHITE, 0)
+	_top_sb = UiKit.box(Color.TRANSPARENT, 0)
 	_top_sb.content_margin_top = 18
-	_top_sb.content_margin_bottom = 14
+	_top_sb.content_margin_bottom = 8
 	panel.add_theme_stylebox_override("panel", _top_sb)
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 10)
+	row.add_theme_constant_override("separation", 12)
 	panel.add_child(row)
+	# 素材：小方塊 + 數字，點一下開交換視窗
+	var bar := PanelContainer.new()
+	bar.theme_type_variation = "Bar"
+	bar.size_flags_horizontal = SIZE_EXPAND_FILL
+	row.add_child(bar)
+	var mats := HBoxContainer.new()
+	mats.add_theme_constant_override("separation", 0)
+	bar.add_child(mats)
 	for t in Materials.TYPES:
 		var b := Button.new()
+		b.theme_type_variation = "FlatButton"
 		b.focus_mode = Control.FOCUS_NONE
-		b.add_theme_font_size_override("font_size", 26)
-		for state in ["normal", "hover", "pressed"]:
-			var chip_sb := UiKit.box(Materials.top_color(t), 12)
-			chip_sb.content_margin_left = 12
-			chip_sb.content_margin_right = 12
-			chip_sb.content_margin_top = 6
-			chip_sb.content_margin_bottom = 6
-			b.add_theme_stylebox_override(state, chip_sb)
+		b.size_flags_horizontal = SIZE_EXPAND_FILL
+		b.tooltip_text = Materials.display_name(t)
+		b.custom_minimum_size = Vector2(0, 44)
+		var inner := HBoxContainer.new()
+		inner.mouse_filter = MOUSE_FILTER_IGNORE
+		inner.alignment = BoxContainer.ALIGNMENT_CENTER
+		inner.add_theme_constant_override("separation", 6)
+		b.add_child(inner)
+		inner.set_anchors_and_offsets_preset(PRESET_FULL_RECT)
+		var cube := UiKit.mini_cube(t)
+		cube.mouse_filter = MOUSE_FILTER_IGNORE
+		inner.add_child(cube)
+		var n := UiKit.label("0", 26)
+		n.mouse_filter = MOUSE_FILTER_IGNORE
+		inner.add_child(n)
 		b.pressed.connect(open_exchange.bind(t))
-		_counts[t] = b
-		row.add_child(b)
-	var spacer := Control.new()
-	spacer.size_flags_horizontal = SIZE_EXPAND_FILL
-	row.add_child(spacer)
-	_daily = UiKit.label("", 24)
-	_daily.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	row.add_child(_daily)
+		_counts[t] = n
+		mats.add_child(b)
+	var daily := PanelContainer.new()
+	daily.theme_type_variation = "Bar"
+	row.add_child(daily)
+	_daily = DailyBadge.new()
+	daily.add_child(_daily)
 	return panel
+
+
+func _check_night() -> void:
+	if UiKit.night == Game.is_night():
+		return
+	UiKit.night = Game.is_night()
+	theme = UiKit.make_theme()
+	_show_page(_current_page)
 
 
 ## 素材交換視窗：選要給出的素材和要換到的素材。
@@ -150,27 +221,44 @@ func open_exchange(from_type: String = Materials.DIRT) -> void:
 
 func _build_tab_bar() -> Control:
 	var panel := PanelContainer.new()
-	_tab_sb = UiKit.box(Color.WHITE, 0)
+	_tab_sb = UiKit.box(Color.TRANSPARENT, 0)
+	_tab_sb.content_margin_top = 6
 	panel.add_theme_stylebox_override("panel", _tab_sb)
+	var bar := PanelContainer.new()
+	bar.theme_type_variation = "Bar"
+	panel.add_child(bar)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 12)
-	panel.add_child(row)
+	bar.add_child(row)
 	var names := ["事件", "島嶼", "回顧"]
+	var icons := ["events", "island", "review"]
+	var group := ButtonGroup.new()
 	for i in names.size():
-		var b := UiKit.button(names[i], _show_page.bind(i))
-		b.size_flags_horizontal = SIZE_EXPAND_FILL
-		b.custom_minimum_size = Vector2(0, 80)
+		var b := UiKit.tile_button(group, UiKit.icon(icons[i]), names[i], "TabButton")
+		b.custom_minimum_size = Vector2(0, 84)
+		b.text = names[i]
+		b.add_theme_color_override("font_color", Color.TRANSPARENT)
+		b.add_theme_color_override("font_pressed_color", Color.TRANSPARENT)
+		b.add_theme_color_override("font_hover_color", Color.TRANSPARENT)
+		b.add_theme_color_override("font_hover_pressed_color", Color.TRANSPARENT)
+		b.pressed.connect(_show_page.bind(i))
 		row.add_child(b)
 		_tabs.append(b)
 	return panel
 
 
+var _current_page := 0
+
+
 func _show_page(index: int) -> void:
+	_current_page = index
 	for i in _pages.size():
 		_pages[i].visible = i == index
 		var selected := i == index
-		_tabs[i].add_theme_stylebox_override(
-			"normal", UiKit.box(Color("dceefc") if selected else Color.WHITE, 14))
+		_tabs[i].set_pressed_no_signal(selected)
+		var role := "accent" if selected else "ink"
+		(_tabs[i].get_child(0).get_child(0) as Icon).role = role
+		(_tabs[i].get_meta("caption") as Label).theme_type_variation = "Accent" if selected else ""
 
 
 # --- 安全區域 -------------------------------------------------------------
@@ -229,6 +317,10 @@ func _check_tip() -> void:
 		return
 	var key := Game.pending_tip()
 	if key == "":
+		if Game.should_ask_daily_reminder():
+			_tip_open = true
+			NotifyDialog.ask_daily(self)
+			get_child(-1).tree_exited.connect(func(): _tip_open = false)
 		return
 	_tip_open = true
 	Game.dismiss_tip(key)
@@ -247,10 +339,10 @@ func _refresh() -> void:
 	_refresh_tutorial()
 	_check_tip.call_deferred()
 	for t in Materials.TYPES:
-		_counts[t].text = "%s %d" % [Materials.display_name(t), Game.data.inventory.get(t, 0)]
+		_counts[t].text = str(Game.data.inventory.get(t, 0))
 	var today := Game.today()
-	if Game.data.is_pro:
-		_daily.text = "今日 %d 件" % Game.data.completions_on(today)
-	else:
-		_daily.text = "今日素材 %d/%d" % [
-			mini(Game.data.completions_on(today), GameData.DAILY_LIMIT), GameData.DAILY_LIMIT]
+	_daily.pro = Game.data.is_pro
+	_daily.limit = GameData.DAILY_LIMIT
+	_daily.done = mini(Game.data.completions_on(today), GameData.DAILY_LIMIT) if not Game.data.is_pro else Game.data.completions_on(today)
+	_daily.tooltip_text = "今日素材 %d/%d" % [mini(Game.data.completions_on(today), GameData.DAILY_LIMIT), GameData.DAILY_LIMIT]
+	_daily.queue_redraw()

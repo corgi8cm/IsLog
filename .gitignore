@@ -1,6 +1,12 @@
 # Godot 4
 .godot/
 /android/
+
+# Android 通知外掛：建置產物與 CI 放進來的 Godot 函式庫
+/android_plugin/build/
+/android_plugin/.gradle/
+/android_plugin/libs/
+/addons/islog_notify/bin/*.aar
 *.tmp
 
 # Exports

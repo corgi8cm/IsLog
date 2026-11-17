@@ -1,11 +1,6 @@
 extends Control
 ## 回顧頁：統計、月曆（點日期看當天）與時間軸（依日期列出全部）。
 
-const PAGE_BG := Color("f4f8fb")
-const MUTED := Color("8a97a5")
-const ACTIVE_LOW := Color("dcefcf")
-const ACTIVE_HIGH := Color("8cc96a")
-const SELECTED_BORDER := Color("2b3a4a")
 const MODE_CALENDAR := 0
 const MODE_TIMELINE := 1
 
@@ -19,11 +14,6 @@ var _toast: Label
 
 
 func _ready() -> void:
-	var bg := ColorRect.new()
-	bg.color = PAGE_BG
-	bg.set_anchors_preset(PRESET_FULL_RECT)
-	add_child(bg)
-
 	var scroll := ScrollContainer.new()
 	scroll.set_anchors_preset(PRESET_FULL_RECT)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -46,6 +36,12 @@ func _ready() -> void:
 	_rebuild()
 
 
+func _notification(what: int) -> void:
+	# 日夜主題換了：月曆的顏色要重算
+	if what == NOTIFICATION_THEME_CHANGED and _content != null:
+		_rebuild.call_deferred()
+
+
 func _rebuild() -> void:
 	if not is_inside_tree():
 		return
@@ -55,7 +51,7 @@ func _rebuild() -> void:
 	_content.add_child(_stats_card())
 	_content.add_child(_mode_bar())
 	_toast = UiKit.label("", 24)
-	_toast.add_theme_color_override("font_color", Color("4f8a34"))
+	_toast.theme_type_variation = "Accent"
 	_toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_toast.visible = false
 	_content.add_child(_toast)
@@ -73,7 +69,7 @@ func _rebuild() -> void:
 # --- 統計 ---------------------------------------------------------------
 
 func _stats_card() -> Control:
-	var panel := _card(Color.WHITE)
+	var panel := _card()
 	var col: VBoxContainer = panel.get_child(0)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
@@ -108,12 +104,16 @@ func _mode_bar() -> Control:
 	for i in 2:
 		var b := UiKit.button(["日曆", "時間軸"][i], _set_mode.bind(i))
 		b.size_flags_horizontal = SIZE_EXPAND_FILL
-		b.add_theme_stylebox_override("normal", UiKit.box(Color("dceefc") if _mode == i else Color.WHITE, 14))
+		if _mode == i:
+			b.add_theme_stylebox_override("normal", UiKit.box(UiKit.color("sel"), 20, UiKit.color("accent"), 2))
 		row.add_child(b)
 		_mode_buttons.append(b)
 	var account := UiKit.button("帳號與備份", func(): AccountDialog.open(_modal_host()))
 	account.add_theme_font_size_override("font_size", 22)
 	row.add_child(account)
+	var notify := UiKit.button("通知", func(): NotifyDialog.open(_modal_host()))
+	notify.add_theme_font_size_override("font_size", 22)
+	row.add_child(notify)
 	return row
 
 
@@ -133,7 +133,7 @@ func _set_mode(mode: int) -> void:
 # --- 月曆 ---------------------------------------------------------------
 
 func _calendar() -> Control:
-	var panel := _card(Color.WHITE)
+	var panel := _card()
 	var col: VBoxContainer = panel.get_child(0)
 	var head := HBoxContainer.new()
 	col.add_child(head)
@@ -162,16 +162,21 @@ func _calendar() -> Control:
 	for day in Review.days_in_month(_year, _month):
 		var date := Review.make_date(_year, _month, day + 1)
 		var n: int = counts.get(date, 0)
-		var bg := Color("f1f4f7")
+		# 完成越多件，顏色越深
+		var bg := UiKit.color("soft")
 		if n > 0:
-			bg = ACTIVE_LOW.lerp(ACTIVE_HIGH, clampf((n - 1) / 5.0, 0.0, 1.0))
+			var acc := UiKit.color("accent")
+			bg = UiKit.color("panel").lerp(acc, lerpf(0.3, 0.85, clampf((n - 1) / 5.0, 0.0, 1.0)))
 		var b := Button.new()
 		b.text = str(day + 1)
+		# 今天以後有預定的事：數字旁邊加一個點
+		if date >= today and not Game.data.planned_on(date, today).is_empty():
+			b.text += "·"
 		b.focus_mode = FOCUS_NONE
 		b.size_flags_horizontal = SIZE_EXPAND_FILL
 		b.custom_minimum_size = Vector2(0, 64)
 		b.add_theme_font_size_override("font_size", 24)
-		var border := SELECTED_BORDER if date == _selected else (Color("7cc35a") if date == today else Color.TRANSPARENT)
+		var border := UiKit.color("ink") if date == _selected else (UiKit.color("accent") if date == today else Color.TRANSPARENT)
 		var sb := UiKit.box(bg, 10, border)
 		sb.set_content_margin_all(4)
 		for state in ["normal", "hover", "pressed"]:
@@ -203,17 +208,42 @@ func _day_section(date: String) -> Control:
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 8)
 	var entries := Review.entries_on(Game.data, date)
+	var today := Game.today()
+	var planned: Array = Game.data.planned_on(date, today) if date >= today else []
 	var head := _muted("%s · %d 件" % [Review.label(date), entries.size()], 24)
 	col.add_child(head)
-	if entries.is_empty():
-		col.add_child(_muted("這天沒有完成的事件。", 24))
+	if entries.is_empty() and planned.is_empty():
+		col.add_child(_muted("這天沒有完成的事件。" if date <= today else "這天還沒有預定的事。", 24))
 	for e in entries:
 		col.add_child(_entry_card(e))
+	if not planned.is_empty():
+		col.add_child(_muted("預定 · %d 件" % planned.size(), 22))
+		for item in planned:
+			col.add_child(_planned_card(item))
 	return col
 
 
+## 預定要做的事（含重複事件推算出來的日子）。
+func _planned_card(item: Dictionary) -> Control:
+	var panel := PanelContainer.new()
+	panel.theme_type_variation = "Soft"
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	panel.add_child(row)
+	var t := UiKit.label(item.title, 26)
+	t.size_flags_horizontal = SIZE_EXPAND_FILL
+	t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	row.add_child(t)
+	var info := Schedule.time_text(item.time)
+	if item.repeat:
+		info += ("　" if info != "" else "") + "重複"
+	if info != "":
+		row.add_child(_muted(info, 22))
+	return panel
+
+
 func _entry_card(e: Dictionary) -> Control:
-	var panel := _card(Color.WHITE)
+	var panel := _card()
 	var col: VBoxContainer = panel.get_child(0)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
@@ -221,7 +251,7 @@ func _entry_card(e: Dictionary) -> Control:
 	var title: String = e.title
 	if e.kind == "subtask":
 		title = "%s（%s 的子事件）" % [e.title, e.event.title]
-	var t := UiKit.label("✓ " + title, 28)
+	var t := UiKit.label(title, 28)
 	t.size_flags_horizontal = SIZE_EXPAND_FILL
 	t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	row.add_child(t)
@@ -254,9 +284,9 @@ func _redo(ev: Dictionary) -> void:
 
 # --- 小工具 -------------------------------------------------------------
 
-func _card(bg: Color) -> PanelContainer:
+func _card() -> PanelContainer:
 	var panel := PanelContainer.new()
-	panel.add_theme_stylebox_override("panel", UiKit.box(bg, 16))
+	panel.theme_type_variation = "Card"
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 8)
 	panel.add_child(col)
@@ -264,6 +294,4 @@ func _card(bg: Color) -> PanelContainer:
 
 
 func _muted(text: String, font_size: int = 24) -> Label:
-	var l := UiKit.label(text, font_size)
-	l.add_theme_color_override("font_color", MUTED)
-	return l
+	return UiKit.label(text, font_size, "Muted")

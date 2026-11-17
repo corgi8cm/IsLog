@@ -13,6 +13,8 @@ func _run() -> void:
 	game.data = GameData.new()
 	game.island = IslandData.new()
 	game.rng.seed = 3
+	game.clock_override = 12 * 60
+	game.data.notify.asked = true
 	for title in ["喝一杯水", "伸展一分鐘", "整理桌面", "讀 10 頁書", "散步十分鐘"]:
 		game.add_event(title)
 	for i in 2:
@@ -22,6 +24,13 @@ func _run() -> void:
 		for k in (back % 3) + 1:
 			var ev: Dictionary = game.data.add_event(["散步十分鐘", "喝一杯水", "伸展一分鐘"][k], 0)
 			game.data.complete_event(ev.id, date, 0, game.rng)
+	# 有日期、時間、重複的事件
+	var today: String = game.today()
+	var walk: Dictionary = game.add_event("晨間伸展", [], {"due_date": today, "due_time": 7 * 60 + 30, "repeat": {"kind": "daily"}})
+	walk.streak = 6
+	game.add_event("繳電話費", [], {"due_date": Schedule.add_days(today, -2)})
+	game.add_event("倒垃圾", [], {"due_date": Schedule.add_days(today, 1), "due_time": 20 * 60 + 30, "repeat": {"kind": "weekly", "days": [1, 3, 5]}})
+	game.add_event("看牙醫", [], {"due_date": Schedule.add_days(today, 4), "due_time": 10 * 60})
 	var room: Dictionary = game.add_event("整理房間", ["收衣服", "擦桌子", "倒垃圾"])
 	game.complete_subtask(room.id, room.subtasks[0].id)
 	var book: Dictionary = game.add_event("讀完一本書", ["第一章", "第二章"])
@@ -48,6 +57,12 @@ func _run() -> void:
 	for p in planting:
 		game.data.plants[planting[p]] += 1
 		game.plant(p, planting[p])
+	# 光源
+	var light_cells := {Vector3i(2, 3, 0): "lamp", Vector3i(6, 3, 0): "torch", Vector3i(3, 6, 0): "lantern", Vector3i(7, 7, 0): "campfire"}
+	for p in light_cells:
+		game.data.plants[light_cells[p]] += 1
+		game.data.seen_lights[light_cells[p]] = game.today()
+		game.plant(p, light_cells[p])
 	for i in 9:
 		var v: String = game.island.try_visit(0.0, game.now(), game.rng, game.data.seen_animals)
 		if v != "":
@@ -83,8 +98,16 @@ func _run() -> void:
 	root.add_child(main)
 	main.get("_pages")[0].call("_toggle_subtasks", room.id)
 	await _shot(out_dir, "events.png")
+	main.get("_pages")[0].set("_pending_when", {"due_date": today, "due_time": 20 * 60 + 30, "repeat": {"kind": "weekly", "days": [1, 3, 5]}})
+	_press(main, "設定時間")
+	await _shot(out_dir, "schedule_dialog.png")
+	main.get_child(-1).queue_free()
 	main.call("_show_page", 1)
 	await _shot(out_dir, "island.png")
+	for t in [["morning", 7 * 60], ["evening", 18 * 60], ["night", 22 * 60]]:
+		game.set_clock(t[1])
+		await _shot(out_dir, "island_%s.png" % t[0])
+	game.set_clock(12 * 60)
 	var page = main.get("_pages")[1]
 	page.view.layer = 1
 	page.view.rotation_step = 1
@@ -117,7 +140,7 @@ func _run() -> void:
 	# 從島嶼頁的「圖鑑」按鈕開啟（-s 腳本不能直接引用用到 Autoload 的類別）
 	main.call("_show_page", 1)
 	for b in main.find_children("*", "Button", true, false):
-		if b.text == "圖鑑":
+		if b.tooltip_text == "圖鑑":
 			b.pressed.emit()
 	await _shot(out_dir, "encyclopedia.png")
 	main.get_child(-1).queue_free()
@@ -143,13 +166,37 @@ func _run() -> void:
 	remote.device = "Pixel 9"
 	game.cloud_choice_needed.emit(game.export_summary(), remote)
 	await _shot(out_dir, "account_choice.png")
+	main.get_child(-1).queue_free()
+	main.call("_show_page", 2)
+	_press(main, "通知")
+	await _shot(out_dir, "notify.png")
+	main.get_child(-1).queue_free()
+	# 夜晚的介面
+	game.set_clock(22 * 60)
+	main.call("_show_page", 0)
+	await _shot(out_dir, "events_night.png")
+	main.call("_show_page", 2)
+	await _shot(out_dir, "review_night.png")
+	main.call("_show_page", 1)
+	_press(main, "圖鑑")
+	await _shot(out_dir, "encyclopedia_night.png")
+	# 圖鑑裡的「光源」分頁（工具列也有一個「光源」，取最後開的那個）
+	var tab_buttons := main.find_children("*", "Button", true, false).filter(func(x): return x.text == "光源" and x.toggle_mode and x.is_visible_in_tree())
+	tab_buttons.back().button_pressed = true
+	await _shot(out_dir, "encyclopedia_lights_night.png")
+	main.get_child(-1).queue_free()
+	_press(main, "知道了")
+	for id in Catalog.light_ids():
+		game.data.plants[id] += 2
+	page.call("_select_tool", "light")
+	await _shot(out_dir, "island_lights_night.png")
 	_remove_dir("user://screenshot_demo")
 	quit()
 
 
 func _press(main: Node, text: String) -> void:
 	for b in main.find_children("*", "Button", true, false):
-		if b.text == text and b.is_visible_in_tree():
+		if (b.text == text or b.tooltip_text == text) and b.is_visible_in_tree():
 			b.pressed.emit()
 			return
 

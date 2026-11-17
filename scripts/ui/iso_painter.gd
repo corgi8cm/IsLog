@@ -10,6 +10,8 @@ var alpha := 1.0
 var silhouette := false
 ## 同一種動物的不同毛色（""＝原本的樣子）。
 var variant := ""
+## 晝夜染色（乘上去）。
+var tint := Color.WHITE
 
 
 func _init(canvas: CanvasItem) -> void:
@@ -20,7 +22,7 @@ func col(c: Color) -> Color:
 	if silhouette:
 		return Color(0.32, 0.36, 0.42, c.a * alpha) if c.a > 0.5 else Color(0, 0, 0, 0)
 	var l := c.get_luminance()
-	var out := c.lerp(Color(l, l, l, c.a), fade)
+	var out := c.lerp(Color(l, l, l, c.a), fade) * Color(tint.r, tint.g, tint.b, 1.0)
 	out.a = c.a * alpha
 	return out
 
@@ -150,6 +152,93 @@ func plant(id: String, at: Vector2) -> void:
 				ci.draw_polyline(PackedVector2Array([crown, mid, tip]), col(Color("3f9a4a")), 3.0, true)
 			circle(crown + Vector2(-2, 3), 2.4, Color("6d4c2f"))
 			circle(crown + Vector2(2, 3), 2.4, Color("6d4c2f"))
+
+
+# --- 光源 ---------------------------------------------------------------
+
+const LIGHT_INK := Color("4a3b30")
+## 光源發光的地方（相對於方塊頂面中心）與光暈大小、顏色：[位置, 半徑, 顏色, 地上光圈半徑]。
+const LIGHT_GLOW := {
+	"lamp": [Vector2(0, -71), 34.0, Color("ffd27a"), 120.0],
+	"torch": [Vector2(0, -50), 30.0, Color("ffae5a"), 95.0],
+	"lantern": [Vector2(6, -28), 30.0, Color("ff9a7a"), 90.0],
+	"campfire": [Vector2(0, -14), 40.0, Color("ffae5a"), 105.0],
+}
+
+
+## at：方塊頂面中心。lit：晚上亮著（燈罩、火焰不受夜色影響）。t：火焰晃動用的時間。
+func light(id: String, at: Vector2, lit: bool, t: float) -> void:
+	var fl := sin(t * 9.0) * 1.5
+	match id:
+		"lamp":
+			_outlined(at, [Vector2(-6, 2), Vector2(6, 2), Vector2(4, -4), Vector2(-4, -4)], Color("6b5a4c"))
+			_outlined(at, [Vector2(-2.5, -4), Vector2(2.5, -4), Vector2(2.5, -62), Vector2(-2.5, -62)], Color("5d4e43"), 1.6)
+			_outlined(at, [Vector2(-9, -64), Vector2(9, -64), Vector2(7, -78), Vector2(-7, -78)], Color("e8eef0"), 2.0,
+				Color("fff1b8") if lit else Color())
+			_outlined(at, [Vector2(-12, -78), Vector2(12, -78), Vector2(0, -88)], Color("5d4e43"))
+		"torch":
+			_outlined(at, [Vector2(-3, 0), Vector2(3, 0), Vector2(4, -34), Vector2(-4, -34)], Color("a8754a"))
+			_outlined(at, [Vector2(-6, -34), Vector2(6, -34), Vector2(5, -40), Vector2(-5, -40)], Color("7a5a44"))
+			_flame(at, Vector2(0, -40), 1.0, fl)
+		"lantern":
+			_outlined(at, [Vector2(-12, 0), Vector2(-8, 0), Vector2(-8, -46), Vector2(-12, -46)], Color("8a6a4e"), 1.5)
+			_outlined(at, [Vector2(-12, -44), Vector2(10, -44), Vector2(10, -48), Vector2(-12, -48)], Color("8a6a4e"), 1.5)
+			line(at + Vector2(6, -44), at + Vector2(6, -38), LIGHT_INK, 1.5)
+			circle(at + Vector2(6, -28), 11, LIGHT_INK)
+			if lit and not silhouette:
+				ci.draw_circle(at + Vector2(6, -28), 9.5, Color(Color("ff8a6b"), alpha))
+			else:
+				circle(at + Vector2(6, -28), 9.5, Color("e0705a"))
+			line(at + Vector2(6, -38), at + Vector2(6, -18), Color(0.3, 0.15, 0.1, 0.35), 1.2)
+			poly(_shift(at, [Vector2(1, -40), Vector2(11, -40), Vector2(11, -37), Vector2(1, -37)]), LIGHT_INK)
+			poly(_shift(at, [Vector2(1, -19), Vector2(11, -19), Vector2(11, -16), Vector2(1, -16)]), LIGHT_INK)
+		"campfire":
+			for i in 7:
+				var a := TAU * i / 7.0
+				var c := at + Vector2(cos(a) * 15, sin(a) * 7.5)
+				circle(c, 4.2, LIGHT_INK)
+				circle(c, 3.2, Color("bdb5a8"))
+			for log_line in [[Vector2(-11, 1), Vector2(10, -6), Color("9a6b45")], [Vector2(-10, -6), Vector2(11, 1), Color("a8754a")]]:
+				line(at + log_line[0], at + log_line[1], LIGHT_INK, 6)
+				line(at + log_line[0], at + log_line[1], log_line[2], 4)
+			_flame(at, Vector2(0, -4), 1.3, fl * 1.3)
+
+
+## 火焰：白天一樣是火（顏色稍淡），晚上更亮。
+func _flame(at: Vector2, base: Vector2, s: float, fl: float) -> void:
+	var outer := []
+	for v in [Vector2(-7, 0), Vector2(7, 0), Vector2(4 + fl, -12), Vector2(fl, -22), Vector2(-4 + fl, -11)]:
+		outer.append(base + Vector2(v.x * s, v.y * s))
+	var inner := []
+	for v in [Vector2(-3, -1), Vector2(3, -1), Vector2(fl * 0.5, -13)]:
+		inner.append(base + Vector2(v.x * s, v.y * s))
+	if silhouette:
+		poly(_shift(at, outer), Color("ff9a3c"))
+		return
+	ci.draw_colored_polygon(_shift(at, outer), Color(Color("ff9a3c"), alpha))
+	var o := _shift(at, outer)
+	o.append(o[0])
+	ci.draw_polyline(o, Color(Color("c25a2a"), alpha), 2.0, true)
+	ci.draw_colored_polygon(_shift(at, inner), Color(Color("ffe07a"), alpha))
+
+
+## 有深色外框的多邊形；glow 不是透明色時，用它填滿且不套夜色。
+func _outlined(at: Vector2, pts: Array, fill: Color, w := 2.0, glow := Color()) -> void:
+	var arr := _shift(at, pts)
+	if glow.a > 0.0 and not silhouette:
+		ci.draw_colored_polygon(arr, Color(glow, alpha))
+	else:
+		ci.draw_colored_polygon(arr, col(fill))
+	var o := arr.duplicate()
+	o.append(arr[0])
+	ci.draw_polyline(o, col(LIGHT_INK), w, true)
+
+
+func _shift(at: Vector2, pts: Array) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for v in pts:
+		out.append(at + v)
+	return out
 
 
 # --- 動物 ---------------------------------------------------------------

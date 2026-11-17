@@ -6,10 +6,12 @@ signal cell_tapped(screen_pos: Vector2)
 const TAP_SLOP := 14.0
 const MIN_ZOOM := 0.4
 const MAX_ZOOM := 3.0
-const SKY_COLOR := Color("bfe4ff")
-const GRID_COLOR := Color(1, 1, 1, 0.55)
-const FRAME_COLOR := Color(1, 1, 1, 0.35)
 const ABOVE_ALPHA := 0.22
+const OUTLINE := 1.4
+## 動物、植物畫得比方塊比例大一點，才看得清楚。
+const ANIMAL_SCALE := 1.5
+const PLANT_SCALE := 1.25
+const LIGHT_SCALE := 1.0
 
 var layer := 0:
 	set(v):
@@ -47,6 +49,11 @@ var _animal_draw_pos := {}
 var _animal_flip := {}
 var _animal_moving := {}
 var _time := 0.0
+var _fx_clock := 0.0
+var _night := 0.0
+var _base := Transform2D()
+## 旋轉座標 → 方塊種類（每次重畫時建立，用來判斷哪些面露在外面）。
+var _rot_blocks := {}
 
 
 func _ready() -> void:
@@ -54,13 +61,22 @@ func _ready() -> void:
 	clip_contents = true
 	Game.changed.connect(queue_redraw)
 	Game.animals_moved.connect(queue_redraw)
+	Game.daytime_changed.connect(queue_redraw)
 	resized.connect(queue_redraw)
 
 
 func _process(delta: float) -> void:
-	if not is_visible_in_tree() or Game.island.animals.is_empty():
+	if not is_visible_in_tree():
 		return
 	_time += delta
+	# 夜晚的螢火蟲會飄：大約每秒重畫 15 次
+	if _night >= 0.5:
+		_fx_clock += delta
+		if _fx_clock > 1.0 / 15.0:
+			_fx_clock = 0.0
+			queue_redraw()
+	if Game.island.animals.is_empty():
+		return
 	var any_moving := false
 	var alive := {}
 	for a in Game.island.animals:
@@ -235,19 +251,28 @@ func _rotate_point(x: float, y: float) -> Vector2:
 
 func _draw() -> void:
 	var fade := Game.current_fade()
+	var minutes := Game.now_minutes()
 	_painter.fade = fade
-	var sky := SKY_COLOR.lerp(Color("d9dde1"), fade * 0.8)
-	draw_rect(Rect2(Vector2.ZERO, size), sky)
-	draw_set_transform(_origin(), 0.0, Vector2(zoom, zoom))
+	_painter.tint = DayCycle.tint(minutes)
+	_night = DayCycle.night_amount(minutes)
+	Doodles.paper(self, Rect2(Vector2.ZERO, size), minutes, fade)
+	Doodles.sky(self, Vector2(size.x * 0.5, size.y * 0.16), minutes, fade)
+	_base = Transform2D(0.0, Vector2(zoom, zoom), 0.0, _origin())
+	draw_set_transform_matrix(_base)
 
 	var n := IslandData.SIZE
-	if not photo_mode:
-		_draw_frame_back(n)
+	_draw_ground_shadow()
+
+	# 旋轉座標下的方塊表（判斷哪些面露在外面）
+	_rot_blocks.clear()
+	var island := Game.island
+	for cell in island.blocks:
+		var rc := Iso.rotate_cell(Vector2i(cell.x, cell.y), rotation_step)
+		_rot_blocks[Vector3i(rc.x, rc.y, cell.z)] = island.blocks[cell]
 
 	# 繪製清單：[排序鍵, 種類(0 方塊, 1 植物, 2 動物), 高度, 資料...]
 	var below := []
 	var upper := []
-	var island := Game.island
 	for cell in island.blocks:
 		var rc := Iso.rotate_cell(Vector2i(cell.x, cell.y), rotation_step)
 		var key := Iso.draw_key(rc, cell.z)
@@ -271,10 +296,13 @@ func _draw() -> void:
 		_draw_layer_grid(n)
 	for it in upper:
 		_draw_item(it, 1.0 if it[2] == layer or photo_mode else ABOVE_ALPHA)
-
-	if not photo_mode:
-		_draw_frame_front(n)
+	_draw_night_fx()
 	draw_set_transform(Vector2.ZERO)
+
+
+## 以 at 為中心放大 k 倍來畫（動物、植物比方塊大一點才看得清楚）。
+func _scaled(at: Vector2, k: float) -> void:
+	draw_set_transform_matrix(_base * Transform2D(0.0, Vector2(k, k), 0.0, at))
 
 
 func _draw_item(it: Array, alpha: float) -> void:
@@ -284,30 +312,70 @@ func _draw_item(it: Array, alpha: float) -> void:
 			_draw_cube(it[3], it[2], it[4], alpha)
 		1:
 			var rc: Vector2i = it[3]
-			_painter.plant(it[4], Iso.to_screen(rc.x + 0.5, rc.y + 0.5, it[2] + 1))
+			var h := float(it[2]) + (0.85 if _rot_blocks.get(Vector3i(rc.x, rc.y, it[2])) == Materials.WATER else 1.0)
+			if Catalog.is_light(it[4]):
+				_scaled(Iso.to_screen(rc.x + 0.5, rc.y + 0.5, h), LIGHT_SCALE)
+				_painter.light(it[4], Vector2.ZERO, _night >= 0.5, _time)
+			else:
+				_scaled(Iso.to_screen(rc.x + 0.5, rc.y + 0.5, h), PLANT_SCALE)
+				_painter.plant(it[4], Vector2.ZERO)
+			draw_set_transform_matrix(_base)
 		2:
 			var rp: Vector2 = it[3]
 			var a: Dictionary = it[5]
 			var h: float = it[4] + 1.0
-			if a.species == "fish":
+			if a.species == "fish" or _rot_blocks.get(Vector3i(roundi(rp.x), roundi(rp.y), it[2])) == Materials.WATER:
 				h -= 0.12
 			var bob := absf(sin(_time * 8.0 + a.id)) * 1.5 if _animal_moving.get(a.id, false) else 0.0
 			_painter.variant = a.get("variant", "")
-			_painter.animal(a.species, Iso.to_screen(rp.x + 0.5, rp.y + 0.5, h),
-				_animal_flip.get(a.id, false), a.confused_since != 0, bob)
+			_scaled(Iso.to_screen(rp.x + 0.5, rp.y + 0.5, h), ANIMAL_SCALE)
+			_painter.animal(a.species, Vector2.ZERO, _animal_flip.get(a.id, false), a.confused_since != 0, bob)
+			draw_set_transform_matrix(_base)
 			_painter.variant = ""
+
+
+## 島底下淡淡的影子，像貼在手帳上的貼紙。
+func _draw_ground_shadow() -> void:
+	if Game.island.blocks.is_empty():
+		return
+	# 依島最底層的範圍決定影子大小
+	var lo := Vector2(INF, INF)
+	var hi := Vector2(-INF, -INF)
+	var bottom := 99
+	for cell in Game.island.blocks:
+		bottom = mini(bottom, cell.z)
+	for cell in Game.island.blocks:
+		if cell.z != bottom:
+			continue
+		var rc := Iso.rotate_cell(Vector2i(cell.x, cell.y), rotation_step)
+		for q in [Iso.to_screen(rc.x, rc.y + 1, bottom), Iso.to_screen(rc.x + 1, rc.y, bottom),
+				Iso.to_screen(rc.x + 1, rc.y + 1, bottom), Iso.to_screen(rc.x, rc.y, bottom)]:
+			lo = Vector2(minf(lo.x, q.x), minf(lo.y, q.y))
+			hi = Vector2(maxf(hi.x, q.x), maxf(hi.y, q.y))
+	var c := (lo + hi) * 0.5 + Vector2(0, 22)
+	var rx := (hi.x - lo.x) * 0.5 + 40.0
+	var ry := (hi.y - lo.y) * 0.5 + 18.0
+	var pts := PackedVector2Array()
+	for i in 40:
+		var t := TAU * i / 40.0
+		pts.append(c + Vector2(cos(t) * rx, sin(t) * ry))
+	var shade := Color(0.05, 0.05, 0.15, 0.18) if _night > 0.5 else Color(0.55, 0.42, 0.28, 0.12)
+	draw_colored_polygon(pts, shade)
 
 
 func _draw_layer_grid(n: int) -> void:
 	var h := float(layer)
+	var ink := Doodles.ink(_night)
 	var fill := PackedVector2Array([
 		Iso.to_screen(0, 0, h), Iso.to_screen(n, 0, h),
 		Iso.to_screen(n, n, h), Iso.to_screen(0, n, h),
 	])
-	draw_colored_polygon(fill, Color(1, 1, 1, 0.12))
+	draw_colored_polygon(fill, Color(ink, 0.05))
+	var grid := Color(ink, 0.22)
 	for i in n + 1:
-		draw_line(Iso.to_screen(i, 0, h), Iso.to_screen(i, n, h), GRID_COLOR, -1.0)
-		draw_line(Iso.to_screen(0, i, h), Iso.to_screen(n, i, h), GRID_COLOR, -1.0)
+		draw_line(Iso.to_screen(i, 0, h), Iso.to_screen(i, n, h), grid, -1.0)
+		draw_line(Iso.to_screen(0, i, h), Iso.to_screen(n, i, h), grid, -1.0)
+	draw_polyline(PackedVector2Array([fill[0], fill[1], fill[2], fill[3], fill[0]]), Color(ink, 0.4), 1.5, true)
 
 	# 滑鼠所在格（桌機預覽用）
 	if _hover.x >= 0:
@@ -320,83 +388,216 @@ func _draw_layer_grid(n: int) -> void:
 				Iso.to_screen(x, y, h), Iso.to_screen(x + 1, y, h),
 				Iso.to_screen(x + 1, y + 1, h), Iso.to_screen(x, y + 1, h),
 			])
-			draw_colored_polygon(d, Color(1, 1, 0.6, 0.45))
+			draw_colored_polygon(d, Color(1, 0.85, 0.5, 0.45))
 
 
-func _draw_frame_back(n: int) -> void:
-	var top := float(n)
-	# 後方三條直立邊與底部後方兩邊
-	for c in [Vector2(0, 0), Vector2(n, 0), Vector2(0, n)]:
-		draw_line(Iso.to_screen(c.x, c.y, 0), Iso.to_screen(c.x, c.y, top), FRAME_COLOR, -1.0)
-	draw_line(Iso.to_screen(0, 0, 0), Iso.to_screen(n, 0, 0), FRAME_COLOR, -1.0)
-	draw_line(Iso.to_screen(0, 0, 0), Iso.to_screen(0, n, 0), FRAME_COLOR, -1.0)
-	draw_line(Iso.to_screen(0, 0, top), Iso.to_screen(n, 0, top), FRAME_COLOR, -1.0)
-	draw_line(Iso.to_screen(0, 0, top), Iso.to_screen(0, n, top), FRAME_COLOR, -1.0)
+# --- 方塊（手帳風格：描邊、草皮、紋理）----------------------------------------
 
-
-func _draw_frame_front(n: int) -> void:
-	var top := float(n)
-	draw_line(Iso.to_screen(n, n, 0), Iso.to_screen(n, n, top), FRAME_COLOR, -1.0)
-	draw_line(Iso.to_screen(n, 0, 0), Iso.to_screen(n, n, 0), FRAME_COLOR, -1.0)
-	draw_line(Iso.to_screen(0, n, 0), Iso.to_screen(n, n, 0), FRAME_COLOR, -1.0)
-	draw_line(Iso.to_screen(n, 0, top), Iso.to_screen(n, n, top), FRAME_COLOR, -1.0)
-	draw_line(Iso.to_screen(0, n, top), Iso.to_screen(n, n, top), FRAME_COLOR, -1.0)
+## 旁邊的格子會不會把這一面遮住（水是半透明的，不遮別人）。
+func _covers(me: String, rc: Vector3i) -> bool:
+	if not _rot_blocks.has(rc):
+		return false
+	var other: String = _rot_blocks[rc]
+	return other != Materials.WATER or me == Materials.WATER
 
 
 func _draw_cube(rc: Vector2i, z: int, type: String, alpha: float) -> void:
 	var x := float(rc.x)
 	var y := float(rc.y)
-	var t0 := Iso.to_screen(x, y, z + 1)
-	var t1 := Iso.to_screen(x + 1, y, z + 1)
-	var t2 := Iso.to_screen(x + 1, y + 1, z + 1)
-	var t3 := Iso.to_screen(x, y + 1, z + 1)
+	var here := Vector3i(rc.x, rc.y, z)
+	var top_h := z + (0.88 if type == Materials.WATER and not _rot_blocks.has(here + Vector3i(0, 0, 1)) else 1.0)
+	var t0 := Iso.to_screen(x, y, top_h)
+	var t1 := Iso.to_screen(x + 1, y, top_h)
+	var t2 := Iso.to_screen(x + 1, y + 1, top_h)
+	var t3 := Iso.to_screen(x, y + 1, top_h)
 	var b1 := Iso.to_screen(x + 1, y, z)
 	var b2 := Iso.to_screen(x + 1, y + 1, z)
 	var b3 := Iso.to_screen(x, y + 1, z)
+	var show_top := not _rot_blocks.has(here + Vector3i(0, 0, 1))
+	var show_left := not _covers(type, here + Vector3i(0, 1, 0))
+	var show_right := not _covers(type, here + Vector3i(1, 0, 0))
 
 	if CustomBlocks.is_custom(type):
-		_draw_custom_cube([t0, t1, t2, t3], [b1, b2, b3], type, alpha)
+		_draw_custom_cube([t0, t1, t2, t3], [b1, b2, b3], type, alpha, show_top, show_left, show_right)
 		return
 
-	var top := _painter.col(Materials.top_color(type))
-	var side := _painter.col(Materials.side_color(type))
-	if type == Materials.WATER:
-		alpha *= 0.85
-	top.a = alpha
-	var left := side.darkened(0.08)
-	left.a = alpha
-	var right := side.darkened(0.25)
-	right.a = alpha
-	var edge := side.darkened(0.45)
-	edge.a = alpha * 0.6
+	var a := alpha * (0.88 if type == Materials.WATER else 1.0)
+	var top_c := _c(Materials.top_color(type), a)
+	var left_c := _c(Materials.side_color(type).darkened(0.05), a)
+	var right_c := _c(Materials.side_color(type).darkened(0.2), a)
+	var line_c := _c(Materials.side_color(type).darkened(0.5), alpha * 0.9)
+	var soft_line := Color(line_c, line_c.a * 0.25)
+	var grass := type == Materials.DIRT and show_top
 
-	draw_colored_polygon(PackedVector2Array([t3, t2, b2, b3]), left)
-	draw_colored_polygon(PackedVector2Array([t1, t2, b2, b1]), right)
-	draw_colored_polygon(PackedVector2Array([t0, t1, t2, t3]), top)
-	draw_polyline(PackedVector2Array([t0, t1, t2, t3, t0]), edge, -1.0)
-	draw_line(t2, b2, edge, -1.0)
-	draw_polyline(PackedVector2Array([t1, b1, b2, b3, t3]), edge, -1.0)
+	if show_left:
+		var f := PackedVector2Array([t3, t2, b2, b3])
+		draw_colored_polygon(f, left_c)
+		_side_detail(type, t3, t2, b2, b3, a, grass, 0.06)
+		draw_polyline(_closed(f), line_c, OUTLINE, true)
+	if show_right:
+		var f := PackedVector2Array([t2, t1, b1, b2])
+		draw_colored_polygon(f, right_c)
+		_side_detail(type, t2, t1, b1, b2, a, grass, 0.16)
+		draw_polyline(_closed(f), line_c, OUTLINE, true)
+	if show_top:
+		var f := PackedVector2Array([t0, t1, t2, t3])
+		draw_colored_polygon(f, top_c)
+		_top_detail(type, here, t0, t1, t2, t3, a)
+		# 和同種方塊相連的邊淡一點，看起來像一整片地
+		draw_polyline(_closed(f), soft_line, 1.0, true)
+		var edges := [[t3, t2, Vector3i(0, 1, 0)], [t2, t1, Vector3i(1, 0, 0)],
+			[t0, t3, Vector3i(-1, 0, 0)], [t0, t1, Vector3i(0, -1, 0)]]
+		for e in edges:
+			var nb: Vector3i = here + e[2]
+			if _rot_blocks.get(nb, "") != type or _rot_blocks.has(nb + Vector3i(0, 0, 1)):
+				draw_line(e[0], e[1], line_c, OUTLINE, true)
+
+
+func _c(c: Color, a: float) -> Color:
+	var out := _painter.col(c)
+	out.a = a
+	return out
+
+
+func _closed(v: PackedVector2Array) -> PackedVector2Array:
+	var o := v.duplicate()
+	o.append(v[0])
+	return o
+
+
+## 側面的紋理：土的草皮垂下來和土粒、石頭裂紋、沙粒、水的反光。
+func _side_detail(type: String, t0: Vector2, t1: Vector2, b1: Vector2, b0: Vector2, a: float, grass: bool, dark: float) -> void:
+	var hgt := b0.y - t0.y
+	match type:
+		Materials.DIRT:
+			if grass:
+				var pts := PackedVector2Array([t0, t1])
+				for i in range(6, -1, -1):
+					var k := i / 6.0
+					pts.append(t0.lerp(t1, k) + Vector2(0, hgt * (0.26 if i % 2 == 0 else 0.4)))
+				draw_colored_polygon(pts, _c(Materials.top_color(type).darkened(dark), a))
+			for i in 3:
+				var m := t0.lerp(t1, 0.25 + i * 0.27) + Vector2(0, hgt * (0.62 + 0.12 * (i % 2)))
+				draw_circle(m, 1.6, _c(Materials.side_color(type).darkened(0.3), a))
+		Materials.STONE:
+			var m := t0.lerp(t1, 0.4) + Vector2(0, hgt * 0.35)
+			draw_polyline(PackedVector2Array([m, m + Vector2(4.5, 5), m + Vector2(1.5, 10)]),
+				_c(Materials.side_color(type).darkened(0.35), a), 1.2, true)
+		Materials.SAND:
+			for i in 4:
+				var m := t0.lerp(t1, 0.2 + i * 0.2) + Vector2(0, hgt * (0.35 + 0.25 * (i % 2)))
+				draw_circle(m, 1.0, _c(Materials.side_color(type).darkened(0.2), a))
+		Materials.WATER:
+			draw_line(t0 + Vector2(0, hgt * 0.15), t1 + Vector2(0, hgt * 0.15), Color(1, 1, 1, 0.35 * a), 1.5, true)
+
+
+func _top_detail(type: String, cell: Vector3i, t0: Vector2, t1: Vector2, t2: Vector2, t3: Vector2, a: float) -> void:
+	var center := (t0 + t2) * 0.5
+	# 固定亂數：同一格每次畫都一樣
+	var seed_v := absi(cell.x * 73856093 ^ cell.y * 19349663 ^ cell.z * 83492791)
+	var r := func(i: int, span: float) -> float:
+		return (float((seed_v >> (i * 3)) % 97) / 96.0 - 0.5) * 2.0 * span
+	match type:
+		Materials.DIRT:
+			draw_colored_polygon(PackedVector2Array([t0, (t0 + t1) * 0.5, center, (t0 + t3) * 0.5]), Color(1, 1, 1, 0.10 * a))
+			var gc := _c(Materials.top_color(type).darkened(0.2), a)
+			for i in 3:
+				var q := center + Vector2(r.call(i, 14.0), r.call(i + 4, 5.0))
+				draw_line(q, q + Vector2(-1.2, -3), gc, 1.2, true)
+				draw_line(q, q + Vector2(1.2, -3.4), gc, 1.2, true)
+		Materials.WATER:
+			for i in 2:
+				var q := center + Vector2(r.call(i, 10.0), r.call(i + 3, 4.0))
+				draw_line(q, q + Vector2(7, 0), Color(1, 1, 1, 0.6 * a), 1.6, true)
+		Materials.STONE:
+			draw_colored_polygon(PackedVector2Array([t0, (t0 + t1) * 0.5, center, (t0 + t3) * 0.5]), Color(1, 1, 1, 0.12 * a))
+			var q := center + Vector2(r.call(0, 8.0), r.call(1, 3.0))
+			draw_polyline(PackedVector2Array([q, q + Vector2(4.5, 1.5), q + Vector2(7.5, 0)]),
+				_c(Materials.side_color(type).darkened(0.25), a), 1.1, true)
+		Materials.SAND:
+			for i in 5:
+				var q := center + Vector2(r.call(i, 15.0), r.call(i + 5, 6.0))
+				draw_circle(q, 0.9, _c(Materials.side_color(type), a))
 
 
 ## 自訂方塊：頂面與兩個看得到的側面貼上 8×8 像素圖，側面用明暗區分。
-func _draw_custom_cube(t: Array, b: Array, type: String, alpha: float) -> void:
+func _draw_custom_cube(t: Array, b: Array, type: String, alpha: float, show_top: bool, show_left: bool, show_right: bool) -> void:
 	var uv := PackedVector2Array([Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)])
 	var top_tex := CustomBlocks.texture(type, CustomBlocks.FACE_TOP)
 	var side_tex := CustomBlocks.texture(type, CustomBlocks.FACE_SIDE)
-	var faces := [
-		[PackedVector2Array([t[3], t[2], b[1], b[2]]), side_tex, 0.92],  # 左前
-		[PackedVector2Array([t[2], t[1], b[0], b[1]]), side_tex, 0.75],  # 右前
-		[PackedVector2Array([t[0], t[1], t[2], t[3]]), top_tex, 1.0],  # 頂面
-	]
+	var faces := []
+	if show_left:
+		faces.append([PackedVector2Array([t[3], t[2], b[1], b[2]]), side_tex, 0.92])
+	if show_right:
+		faces.append([PackedVector2Array([t[2], t[1], b[0], b[1]]), side_tex, 0.75])
+	if show_top:
+		faces.append([PackedVector2Array([t[0], t[1], t[2], t[3]]), top_tex, 1.0])
 	var fade := _painter.fade
+	var tint := _painter.tint
+	var edge := Color(Doodles.INK_DAY.darkened(0.2), 0.8 * alpha)
 	for f in faces:
 		var shade: float = f[2]
-		var c := Color(shade, shade, shade, alpha)
+		var c := Color(shade * tint.r, shade * tint.g, shade * tint.b, alpha)
 		draw_polygon(f[0], PackedColorArray([c, c, c, c]), uv, f[1])
 		if fade > 0.0:
 			# 褪色：蓋一層灰
 			draw_colored_polygon(f[0], Color(0.72, 0.74, 0.76, fade * 0.85 * alpha))
-	var edge := Color(0, 0, 0, 0.25 * alpha)
-	draw_polyline(PackedVector2Array([t[0], t[1], t[2], t[3], t[0]]), edge, -1.0)
-	draw_polyline(PackedVector2Array([t[1], b[0], b[1], b[2], t[3]]), edge, -1.0)
-	draw_line(t[2], b[1], edge, -1.0)
+		draw_polyline(_closed(f[0]), edge, OUTLINE, true)
+
+
+# --- 夜晚：螢火蟲與睡覺的動物 -------------------------------------------------
+
+## 光源的光：地上一圈暖色光，加上燈或火本身的光暈（會微微閃爍）。
+func _draw_light_glow(k: float) -> void:
+	var island := Game.island
+	for cell in island.plants:
+		var id: String = island.plants[cell]
+		if not Catalog.is_light(id) or (cell.z > layer and not photo_mode):
+			continue
+		var g: Array = IsoPainter.LIGHT_GLOW[id]
+		var rc := Iso.rotate_cell(Vector2i(cell.x, cell.y), rotation_step)
+		var at := Iso.to_screen(rc.x + 0.5, rc.y + 0.5, cell.z + 1)
+		var flicker := 1.0 if id == "lamp" or id == "lantern" else 0.88 + 0.12 * sin(_time * 7.0 + cell.x)
+		var col: Color = g[2]
+		var ground: float = g[3] * LIGHT_SCALE
+		draw_set_transform_matrix(_base * Transform2D(0.0, Vector2(1.0, 0.5), 0.0, at))
+		for i in 7:
+			var f := 1.0 - i / 7.0
+			draw_circle(Vector2.ZERO, ground * (0.25 + f), Color(col, (0.045 + 0.012 * i) * k * flicker))
+		draw_set_transform_matrix(_base)
+		var head: Vector2 = at + g[0] * LIGHT_SCALE
+		for i in 6:
+			var f := 1.0 - i / 6.0
+			draw_circle(head, g[1] * LIGHT_SCALE * (0.3 + f), Color(col, (0.07 + 0.025 * i) * k * flicker))
+
+
+func _draw_night_fx() -> void:
+	if _night < 0.5:
+		return
+	var k := (_night - 0.5) * 2.0
+	var island := Game.island
+	_draw_light_glow(k)
+	for cell in island.plants:
+		if cell.z > layer and not photo_mode:
+			continue
+		if not island.plants[cell] in ["flower", "shrub", "fruit_tree", "water_lily", "reed", "alpine_flower"]:
+			continue
+		var rc := Iso.rotate_cell(Vector2i(cell.x, cell.y), rotation_step)
+		var seed_v := float(cell.x * 7 + cell.y * 13 + cell.z * 3)
+		var drift := Vector2(sin(_time * 0.9 + seed_v) * 9.0, cos(_time * 0.7 + seed_v) * 6.0)
+		var c := Iso.to_screen(rc.x + 0.5, rc.y + 0.5, cell.z + 1) + Vector2(0, -26) + drift
+		var pulse := 0.6 + 0.4 * sin(_time * 2.4 + seed_v)
+		Doodles.glow(self, c, 9.0, Color("ffe27a"), k * pulse)
+	var font := get_theme_default_font()
+	for a in island.animals:
+		if not Catalog.sleeps_at_night(a.species) or a.confused_since != 0:
+			continue
+		if a.pos.z > layer and not photo_mode:
+			continue
+		var dp: Vector3 = _animal_draw_pos.get(a.id, Vector3(a.pos.x, a.pos.y, a.pos.z))
+		var rp := _rotate_point(dp.x, dp.y)
+		var at := Iso.to_screen(rp.x + 0.5, rp.y + 0.5, dp.z + 1) + Vector2(8, -30)
+		var bob := sin(_time * 1.5 + a.id) * 2.0
+		var zc := Color(Doodles.INK_NIGHT, k)
+		draw_string(font, at + Vector2(0, bob), "z", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, zc)
+		draw_string(font, at + Vector2(8, -9 + bob), "z", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, zc)

@@ -1,0 +1,22 @@
+plugins {
+    id 'com.android.library' version '8.6.1'
+}
+
+android {
+    namespace 'io.github.corgi8cm.islog.notify'
+    compileSdk 35
+
+    defaultConfig {
+        minSdk 24
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    // Godot 的 GodotPlugin 等類別：遊戲執行時由 Godot 提供，這裡只用來編譯
+    compileOnly files('libs/godot-lib.jar')
+}

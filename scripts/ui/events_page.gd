@@ -1,13 +1,10 @@
 extends Control
 ## 事件頁：新增、完成、刪除事件；顯示今天完成的事件與獲得的素材。
 
-const PAGE_BG := Color("f4f8fb")
-const DONE_COLOR := Color("8a97a5")
-const DONE_BG := Color("d8f0c8")
-
 var _input: LineEdit
 var _list: VBoxContainer
 var _toast: Label
+var _greeting: Label
 ## 哪些事件展開了子事件（只存在畫面上，不存檔）。
 var _expanded := {}
 ## 新增子事件後重建畫面時，讓那個事件的輸入框保持焦點。
@@ -15,44 +12,113 @@ var _refocus_event := -1
 var _add_row: Control
 ## 第一件待完成事件的「完成」按鈕（新手引導要亮它）。
 var _first_complete: Button
+## 下一件要新增的事件的日期、時間、重複（輸入列旁的時鐘按鈕設定）。
+var _pending_when := {}
+var _when_chip: Button
+
+
+## 打招呼的柯基。
+class CorgiBadge extends Control:
+	var painter := IsoPainter.new(self)
+
+	func _ready() -> void:
+		custom_minimum_size = Vector2(120, 96)
+		mouse_filter = MOUSE_FILTER_IGNORE
+
+	func _draw() -> void:
+		draw_set_transform(Vector2(size.x * 0.5 - 6, size.y - 16), 0.0, Vector2(3.6, 3.6))
+		painter.animal("corgi", Vector2.ZERO, false, false, 0.0)
+		draw_set_transform(Vector2.ZERO)
+
+
+## 打勾的圓圈：空心是待完成，實心打勾是完成。
+class CheckMark extends Control:
+	var checked := false
+	var radius := 21.0
+
+	func _ready() -> void:
+		mouse_filter = MOUSE_FILTER_IGNORE
+
+	func _notification(what: int) -> void:
+		if what == NOTIFICATION_THEME_CHANGED or what == NOTIFICATION_RESIZED:
+			queue_redraw()
+
+	func _draw() -> void:
+		var c := size * 0.5
+		var acc := UiKit.color("accent")
+		if checked:
+			draw_circle(c, radius, acc)
+			var k := radius / 21.0
+			draw_polyline(PackedVector2Array([c + Vector2(-10, 0) * k, c + Vector2(-3, 7) * k, c + Vector2(11, -8) * k]),
+				UiKit.color("on_accent"), 4.0 * k, true)
+		else:
+			draw_arc(c, radius - 2, 0, TAU, 36, acc, 4.0, true)
 
 
 func _ready() -> void:
-	var bg := ColorRect.new()
-	bg.color = PAGE_BG
-	bg.set_anchors_preset(PRESET_FULL_RECT)
-	bg.mouse_filter = MOUSE_FILTER_IGNORE
-	add_child(bg)
-
 	var margin := MarginContainer.new()
 	margin.set_anchors_preset(PRESET_FULL_RECT)
 	for side in ["left", "right", "top", "bottom"]:
-		margin.add_theme_constant_override("margin_" + side, 20)
+		margin.add_theme_constant_override("margin_" + side, 18)
 	add_child(margin)
 
 	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 14)
+	col.add_theme_constant_override("separation", 12)
 	margin.add_child(col)
 
+	# 柯基打招呼（依時段換句話）
+	var hello := HBoxContainer.new()
+	hello.add_theme_constant_override("separation", 6)
+	col.add_child(hello)
+	hello.add_child(CorgiBadge.new())
+	var bubble := PanelContainer.new()
+	bubble.theme_type_variation = "Card"
+	bubble.size_flags_horizontal = SIZE_EXPAND_FILL
+	hello.add_child(bubble)
+	var bubble_col := VBoxContainer.new()
+	bubble_col.add_theme_constant_override("separation", 0)
+	bubble.add_child(bubble_col)
+	_greeting = UiKit.label("", 26)
+	_greeting.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	bubble_col.add_child(_greeting)
+	bubble_col.add_child(UiKit.label("做完一件，島就會多一點顏色。", 21, "Muted"))
+
 	var add_row := HBoxContainer.new()
-	add_row.add_theme_constant_override("separation", 10)
+	add_row.add_theme_constant_override("separation", 12)
 	col.add_child(add_row)
 	_add_row = add_row
 	_input = LineEdit.new()
 	_input.placeholder_text = "輸入一件小事，例如：喝一杯水"
 	_input.size_flags_horizontal = SIZE_EXPAND_FILL
-	_input.custom_minimum_size = Vector2(0, 72)
+	_input.custom_minimum_size = Vector2(0, 76)
 	_input.max_length = 60
 	_input.text_submitted.connect(func(_t): _add())
 	add_row.add_child(_input)
-	var add_btn := UiKit.button("新增", _add)
-	add_btn.custom_minimum_size = Vector2(110, 72)
+	var when_btn := UiKit.icon_button("clock", "設定時間", func():
+		ScheduleDialog.open(_modal_host(), "什麼時候做？", _pending_when, Game.today(), func(w: Dictionary):
+			_pending_when = w if w.due_date != "" else {}
+			_update_when_chip()), 76)
+	add_row.add_child(when_btn)
+	var add_btn := UiKit.icon_button("plus", "新增", _add, 76)
+	add_btn.theme_type_variation = "AccentButton"
+	(add_btn.get_child(0) as Icon).role = "on_accent"
+	add_btn.add_theme_stylebox_override("normal", UiKit.box(UiKit.color("accent"), 38))
+	add_btn.add_theme_stylebox_override("pressed", UiKit.box(UiKit.color("accent").darkened(0.1), 38))
+	add_btn.add_theme_stylebox_override("hover", UiKit.box(UiKit.color("accent").lightened(0.08), 38))
 	add_row.add_child(add_btn)
 
-	_toast = UiKit.label("", 26)
+	# 已設定的時間（點一下取消）
+	_when_chip = UiKit.button("", func():
+		_pending_when = {}
+		_update_when_chip(), "FlatButton")
+	_when_chip.add_theme_font_size_override("font_size", 22)
+	_when_chip.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_when_chip.visible = false
+	col.add_child(_when_chip)
+
+	_toast = UiKit.label("", 25, "Accent")
 	_toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_toast.add_theme_color_override("font_color", Color("4f8a34"))
-	_toast.custom_minimum_size = Vector2(0, 40)
+	_toast.custom_minimum_size = Vector2(0, 36)
 	_toast.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(_toast)
 
@@ -62,11 +128,34 @@ func _ready() -> void:
 	col.add_child(scroll)
 	_list = VBoxContainer.new()
 	_list.size_flags_horizontal = SIZE_EXPAND_FILL
-	_list.add_theme_constant_override("separation", 10)
+	_list.add_theme_constant_override("separation", 12)
 	scroll.add_child(_list)
 
 	Game.changed.connect(_rebuild)
+	Game.daytime_changed.connect(_update_greeting)
+	_update_greeting()
 	_rebuild()
+
+
+func _notification(what: int) -> void:
+	# 換日夜主題時，強調色按鈕的底色要跟著換
+	if what == NOTIFICATION_THEME_CHANGED and _add_row != null:
+		var add_btn: Button = _add_row.get_child(2)
+		add_btn.add_theme_stylebox_override("normal", UiKit.box(UiKit.color("accent"), 38))
+		add_btn.add_theme_stylebox_override("pressed", UiKit.box(UiKit.color("accent").darkened(0.1), 38))
+		add_btn.add_theme_stylebox_override("hover", UiKit.box(UiKit.color("accent").lightened(0.08), 38))
+
+
+func _update_greeting() -> void:
+	match DayCycle.phase(Game.now_minutes()):
+		DayCycle.MORNING:
+			_greeting.text = "早安！今天想完成什麼小事？"
+		DayCycle.EVENING:
+			_greeting.text = "辛苦了，今天還想完成什麼嗎？"
+		DayCycle.NIGHT:
+			_greeting.text = "晚上好，睡前再做一件小事？"
+		_:
+			_greeting.text = "今天想完成什麼小事？"
 
 
 ## 新手引導用：輸入列與第一個「完成」按鈕在畫面上的位置。
@@ -80,10 +169,18 @@ func first_complete_rect() -> Rect2:
 	return _first_complete.get_global_rect()
 
 
+func _update_when_chip() -> void:
+	_when_chip.visible = not _pending_when.is_empty()
+	if _when_chip.visible:
+		_when_chip.text = "時間：%s　×" % Schedule.summary(_pending_when, Game.today())
+
+
 func _add() -> void:
-	var ev := Game.add_event(_input.text)
+	var ev := Game.add_event(_input.text, [], _pending_when)
 	if not ev.is_empty():
 		_input.clear()
+		_pending_when = {}
+		_update_when_chip()
 	_input.release_focus()
 	DisplayServer.virtual_keyboard_hide()
 
@@ -120,12 +217,14 @@ func _event_reward_line(result: Dictionary) -> String:
 
 
 func _toast_result(lines: Array, result: Dictionary) -> void:
+	# 光源：完成的是重複事件本身，或最後一個子事件讓重複的母事件完成
+	var lit: Dictionary = result if result.get("light", "") != "" else result.get("parent", {})
+	if lit.get("light", "") != "":
+		lines.append("連續準時完成 %d 次！送你一個%s，到島上「光源」放放看" % [lit.streak, Catalog.light_name(lit.light)])
 	if result.get("visitor", "") != "":
 		var new_text := "（新發現！已記錄到圖鑑）" if Game.result_first_visit else ""
 		lines.append("%s來到你的島上了！%s" % [Catalog.animal_name(result.visitor), new_text])
-	var capped: bool = result.capped and result.get("parent", {}).get("capped", true)
-	_show_toast("
-".join(lines), Color("b07a2a") if capped else Color("4f8a34"))
+	_show_toast("\n".join(lines))
 
 
 func _redo(ev: Dictionary) -> void:
@@ -147,32 +246,84 @@ func _add_sub(event_id: int, input: LineEdit) -> void:
 		_refocus_event = -1
 
 
-func _show_toast(text: String, color: Color) -> void:
+func _show_toast(text: String) -> void:
 	_toast.text = text
-	_toast.add_theme_color_override("font_color", color)
 	_toast.modulate.a = 1.0
 	var tw := create_tween()
 	tw.tween_interval(2.5)
 	tw.tween_property(_toast, "modulate:a", 0.0, 0.8)
 
 
+## 「⋯」：子事件與刪除收在這裡。
+func _open_menu(ev: Dictionary) -> void:
+	var parts := UiKit.open_modal(_modal_host(), ev.title)
+	var overlay: Control = parts[0]
+	var body: VBoxContainer = parts[1]
+	var expanded: bool = _expanded.get(ev.id, false)
+	var progress := GameData.subtask_progress(ev)
+	var sub_text := "收起子事件" if expanded else ("拆成子事件" if progress.y == 0 else "展開子事件")
+	var sub := UiKit.button(sub_text, func():
+		overlay.queue_free()
+		_toggle_subtasks(ev.id))
+	sub.custom_minimum_size = Vector2(0, 76)
+	body.add_child(sub)
+	var when := UiKit.button("設定時間與重複", func():
+		overlay.queue_free()
+		ScheduleDialog.open(_modal_host(), ev.title, ev, Game.today(), func(w: Dictionary):
+			Game.set_schedule(ev.id, w)))
+	when.custom_minimum_size = Vector2(0, 76)
+	body.add_child(when)
+	if Schedule.is_repeating(ev):
+		var skip := UiKit.button("跳過這一次", func():
+			overlay.queue_free()
+			if Game.skip_occurrence(ev.id):
+				_show_toast("跳過了，下一次是%s" % Schedule.date_label(Game.data.find_event(ev.id).due_date, Game.today())))
+		skip.custom_minimum_size = Vector2(0, 76)
+		body.add_child(skip)
+	var del := UiKit.button("刪除（不再重複）" if Schedule.is_repeating(ev) else "刪除這件事", func():
+		overlay.queue_free()
+		Game.delete_event(ev.id), "DangerButton")
+	del.custom_minimum_size = Vector2(0, 76)
+	body.add_child(del)
+
+
+func _modal_host() -> Control:
+	var n: Node = self
+	while n.get_parent() is Control:
+		n = n.get_parent()
+	return n as Control
+
+
 func _rebuild() -> void:
 	for c in _list.get_children():
 		c.queue_free()
 
-	var pending := Game.data.pending_events()
-	_list.add_child(_section("待完成（%d）" % pending.size()))
-	if pending.is_empty():
-		var empty := UiKit.label("還沒有事件，先加一件小事吧。", 26)
-		empty.add_theme_color_override("font_color", DONE_COLOR)
-		_list.add_child(empty)
+	var today := Game.today()
+	var groups := {Schedule.OVERDUE: [], Schedule.TODAY: [], Schedule.TOMORROW: [], Schedule.LATER: []}
+	for ev in Game.data.pending_events():
+		groups[Schedule.group(ev, today)].append(ev)
+	# 今天：有時間的照時間排在前面，其他照新增順序
+	groups[Schedule.TODAY].sort_custom(func(a, b):
+		var ta: int = a.due_time if a.due_time >= 0 else 9999
+		var tb: int = b.due_time if b.due_time >= 0 else 9999
+		return ta < tb or (ta == tb and a.id < b.id))
+	for key in [Schedule.OVERDUE, Schedule.TOMORROW, Schedule.LATER]:
+		groups[key].sort_custom(func(a, b): return Schedule.sort_key(a) < Schedule.sort_key(b))
 	_first_complete = null
-	for ev in pending:
-		_list.add_child(_pending_card(ev))
+	var names := {Schedule.OVERDUE: "之前沒做完", Schedule.TODAY: "今天", Schedule.TOMORROW: "明天", Schedule.LATER: "之後"}
+	for key in [Schedule.TODAY, Schedule.OVERDUE, Schedule.TOMORROW, Schedule.LATER]:
+		var list: Array = groups[key]
+		if list.is_empty() and key != Schedule.TODAY:
+			continue
+		_list.add_child(_section("%s · %d" % [names[key], list.size()]))
+		if list.is_empty():
+			_list.add_child(UiKit.label("今天還沒有事件，先加一件小事吧。", 26, "Muted"))
+		for ev in list:
+			_list.add_child(_pending_card(ev))
 
 	var done := Game.data.events_done_on(Game.today())
 	if not done.is_empty():
-		_list.add_child(_section("今天完成（%d）" % done.size()))
+		_list.add_child(_section("今天完成 · %d" % done.size()))
 		done.reverse()
 		for ev in done:
 			_list.add_child(_done_row(ev))
@@ -180,44 +331,73 @@ func _rebuild() -> void:
 
 
 func _section(text: String) -> Label:
-	var l := UiKit.label(text, 24)
-	l.add_theme_color_override("font_color", DONE_COLOR)
-	return l
+	return UiKit.label(text, 23, "Muted")
 
 
-func _card(bg: Color) -> Array:
+func _card(variation: String) -> Array:
 	var panel := PanelContainer.new()
-	panel.add_theme_stylebox_override("panel", UiKit.box(bg, 16))
+	panel.theme_type_variation = variation
 	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 8)
+	col.add_theme_constant_override("separation", 6)
 	panel.add_child(col)
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 10)
+	row.add_theme_constant_override("separation", 12)
 	col.add_child(row)
 	return [panel, row, col]
 
 
-func _title_label(text: String, color: Color, font_size: int = 0) -> Label:
-	var l := UiKit.label(text, font_size)
+func _title_label(text: String, font_size: int = 0, variation := "") -> Label:
+	var l := UiKit.label(text, font_size, variation)
 	l.size_flags_horizontal = SIZE_EXPAND_FILL
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	l.add_theme_color_override("font_color", color)
 	return l
 
 
-func _small_button(text: String, bg: Color, callback: Callable) -> Button:
-	var b := UiKit.button(text, callback)
-	b.add_theme_stylebox_override("normal", UiKit.box(bg, 12))
-	b.add_theme_stylebox_override("pressed", UiKit.box(bg.darkened(0.1), 12))
+## 打勾圓圈按鈕（tooltip「完成」）。
+func _check_button(callback: Callable, radius := 21.0) -> Button:
+	var b := Button.new()
+	b.theme_type_variation = "FlatButton"
+	b.focus_mode = Control.FOCUS_NONE
+	b.tooltip_text = "完成"
+	b.custom_minimum_size = Vector2(radius * 2 + 14, radius * 2 + 14)
+	b.pressed.connect(callback)
+	var mark := CheckMark.new()
+	mark.radius = radius
+	b.add_child(mark)
+	mark.set_anchors_and_offsets_preset(PRESET_FULL_RECT)
 	return b
 
 
+func _done_mark(radius := 21.0) -> Control:
+	var mark := CheckMark.new()
+	mark.checked = true
+	mark.radius = radius
+	mark.custom_minimum_size = Vector2(radius * 2 + 14, radius * 2 + 14)
+	return mark
+
+
+## 獲得的素材用小方塊表示。
+func _reward_cubes(rewards: Array, plant := "") -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 2)
+	row.alignment = BoxContainer.ALIGNMENT_END
+	for t in rewards.slice(0, 6):
+		var c := UiKit.mini_cube(t)
+		c.half = 9
+		row.add_child(c)
+	if rewards.size() > 6:
+		row.add_child(UiKit.label("+%d" % (rewards.size() - 6), 20, "Muted"))
+	if plant != "":
+		row.add_child(UiKit.label("＋" + Catalog.plant_name(plant), 20, "Muted"))
+	return row
+
+
 func _pending_card(ev: Dictionary) -> Control:
-	var parts := _card(Color.WHITE)
+	var parts := _card("Card")
 	var row: HBoxContainer = parts[1]
 	var col: VBoxContainer = parts[2]
-	var done_btn := _small_button("完成", DONE_BG, _complete.bind(ev.id))
+	var done_btn := _check_button(_complete.bind(ev.id))
 	row.add_child(done_btn)
 	if _first_complete == null:
 		_first_complete = done_btn
@@ -225,11 +405,36 @@ func _pending_card(ev: Dictionary) -> Control:
 	var title: String = ev.title
 	if progress.y > 0:
 		title += "（%d/%d）" % [progress.x, progress.y]
-	row.add_child(_title_label(title, UiKit.TEXT_COLOR))
+	var title_box := VBoxContainer.new()
+	title_box.size_flags_horizontal = SIZE_EXPAND_FILL
+	title_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	title_box.add_theme_constant_override("separation", 0)
+	row.add_child(title_box)
+	var title_label := _title_label(title)
+	# 點標題展開或收起子事件
+	title_label.mouse_filter = MOUSE_FILTER_STOP
+	title_label.gui_input.connect(func(e: InputEvent):
+		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			_toggle_subtasks(ev.id))
+	title_box.add_child(title_label)
+	# 日期、時間、重複與連續紀錄
+	var today := Game.today()
+	var info := Schedule.summary(ev, today)
+	if int(ev.get("streak", 0)) >= 2:
+		info += ("　" if info != "" else "") + "連續 %d 次" % ev.streak
+	if info != "":
+		var overdue := Schedule.group(ev, today) == Schedule.OVERDUE
+		title_box.add_child(UiKit.label(info + ("　有提醒" if int(ev.get("remind", -1)) >= 0 else ""), 21,
+			"Accent" if overdue else "Muted"))
+	if Schedule.group(ev, today) == Schedule.OVERDUE:
+		var move := UiKit.button("改到今天", Game.move_to_today.bind(ev.id), "FlatButton")
+		move.add_theme_font_size_override("font_size", 22)
+		row.add_child(move)
+	var more := UiKit.icon_button("more", "更多", _open_menu.bind(ev), 56)
+	more.theme_type_variation = "FlatButton"
+	(more.get_child(0) as Icon).role = "muted"
+	row.add_child(more)
 	var expanded: bool = _expanded.get(ev.id, false)
-	var sub_label := "收起" if expanded else ("子事件" if progress.y == 0 else "展開")
-	row.add_child(_small_button(sub_label, Color("e8f1fb"), _toggle_subtasks.bind(ev.id)))
-	row.add_child(_small_button("刪除", Color("f6f0f0"), Game.delete_event.bind(ev.id)))
 	if expanded:
 		for sub in ev.subtasks:
 			col.add_child(_subtask_row(ev, sub))
@@ -241,17 +446,20 @@ func _subtask_row(ev: Dictionary, sub: Dictionary) -> Control:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
 	var indent := Control.new()
-	indent.custom_minimum_size = Vector2(24, 0)
+	indent.custom_minimum_size = Vector2(30, 0)
 	row.add_child(indent)
 	if sub.done_date == "":
-		row.add_child(_small_button("完成", DONE_BG, _complete_sub.bind(ev.id, sub.id)))
-		row.add_child(_title_label(sub.title, UiKit.TEXT_COLOR, 26))
+		row.add_child(_check_button(_complete_sub.bind(ev.id, sub.id), 15))
+		row.add_child(_title_label(sub.title, 26))
 	else:
-		row.add_child(_title_label("✓ " + sub.title, DONE_COLOR, 26))
-		var r := UiKit.label(Materials.summary(sub.rewards), 22)
-		r.add_theme_color_override("font_color", DONE_COLOR)
-		row.add_child(r)
-	row.add_child(_small_button("刪除", Color("f6f0f0"), Game.delete_subtask.bind(ev.id, sub.id)))
+		row.add_child(_done_mark(15))
+		row.add_child(_title_label(sub.title, 26, "Muted"))
+		row.add_child(_reward_cubes(sub.rewards))
+	var del := UiKit.icon_button("close", "刪除", Game.delete_subtask.bind(ev.id, sub.id), 44)
+	del.theme_type_variation = "FlatButton"
+	(del.get_child(0) as Icon).role = "muted"
+	(del.get_child(0) as Icon).icon_size = 26
+	row.add_child(del)
 	return row
 
 
@@ -259,15 +467,13 @@ func _add_sub_row(ev: Dictionary) -> Control:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
 	var indent := Control.new()
-	indent.custom_minimum_size = Vector2(24, 0)
+	indent.custom_minimum_size = Vector2(30, 0)
 	row.add_child(indent)
 	var input := LineEdit.new()
 	input.placeholder_text = "新增子事件"
 	input.size_flags_horizontal = SIZE_EXPAND_FILL
 	input.max_length = 60
 	input.add_theme_font_size_override("font_size", 26)
-	input.add_theme_stylebox_override("normal", UiKit.box(PAGE_BG, 12))
-	input.add_theme_stylebox_override("focus", UiKit.box(PAGE_BG, 12, Color("7cc35a")))
 	input.text_submitted.connect(func(_t): _add_sub(ev.id, input))
 	row.add_child(input)
 	row.add_child(UiKit.button("新增", _add_sub.bind(ev.id, input)))
@@ -277,19 +483,16 @@ func _add_sub_row(ev: Dictionary) -> Control:
 
 
 func _done_row(ev: Dictionary) -> Control:
-	var parts := _card(Color("eef2f5"))
+	var parts := _card("Soft")
 	var row: HBoxContainer = parts[1]
-	var title: String = "✓ " + ev.title
+	row.add_child(_done_mark())
+	var title: String = ev.title
 	var progress := GameData.subtask_progress(ev)
 	if progress.y > 0:
 		title += "（子事件 %d）" % progress.y
-	row.add_child(_title_label(title, DONE_COLOR))
-	var reward_text := Materials.summary(ev.rewards)
-	if ev.plant != "":
-		reward_text += "＋" + Catalog.plant_name(ev.plant)
-	var r := UiKit.label(reward_text, 22)
-	r.add_theme_color_override("font_color", DONE_COLOR)
-	r.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	row.add_child(r)
-	row.add_child(UiKit.button("再一次", _redo.bind(ev)))
+	if Schedule.is_repeating(ev) and int(ev.streak) >= 2:
+		title += "　連續 %d 次" % ev.streak
+	row.add_child(_title_label(title, 0, "Muted"))
+	row.add_child(_reward_cubes(ev.rewards, ev.plant))
+	row.add_child(UiKit.button("再一次", _redo.bind(ev), "FlatButton"))
 	return parts[0]

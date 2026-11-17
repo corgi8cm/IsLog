@@ -6,6 +6,10 @@ signal changed
 signal animals_moved
 ## 雲端和本機都有新進度，畫面要讓玩家選（轉送 CloudSync.choice_needed）。
 signal cloud_choice_needed(local_summary: Dictionary, remote_bundle: Dictionary)
+## 時間往前走了（晝夜）：島要重畫；跨過夜晚時介面換深色。
+signal daytime_changed
+
+const DAYTIME_SECONDS := 30.0
 
 const WANDER_SECONDS := 2.5
 const TICK_SECONDS := 60.0
@@ -23,6 +27,11 @@ var _tick_state := ""
 var result_first_visit := false
 ## 帳號綁定與雲端備份。
 var cloud: CloudSync
+## 手機通知（電腦版只記錄不發送）。
+var notifier: Notifier = AndroidNotifier.new() if AndroidNotifier.available() else Notifier.new()
+var _replan_queued := false
+## 測試與截圖用：固定一天中的時間（分鐘，0..1439）；-1 表示用手機時間。
+var clock_override := -1
 
 
 func _ready() -> void:
@@ -33,6 +42,8 @@ func _ready() -> void:
 	cloud.start()
 	_add_timer(WANDER_SECONDS, wander)
 	_add_timer(TICK_SECONDS, tick)
+	_add_timer(DAYTIME_SECONDS, daytime_changed.emit)
+	replan_notifications()
 
 
 func _add_timer(seconds: float, callback: Callable) -> void:
@@ -46,6 +57,7 @@ func _add_timer(seconds: float, callback: Callable) -> void:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_WM_CLOSE_REQUEST:
 		save_game()
+		replan_notifications()
 		if cloud:
 			cloud.auto_backup()
 	elif what == NOTIFICATION_APPLICATION_RESUMED:
@@ -60,14 +72,88 @@ func now() -> int:
 	return int(Time.get_unix_time_from_system())
 
 
+## 一天中的第幾分鐘（晝夜用）。
+func now_minutes() -> int:
+	if clock_override >= 0:
+		return clock_override
+	var t := Time.get_time_dict_from_system()
+	return DayCycle.minutes_of(t.hour, t.minute)
+
+
+## 時區和 UTC 差幾分鐘（排通知用）。
+func tz_bias() -> int:
+	return int(Time.get_time_zone_from_system().get("bias", 0))
+
+
+## 依目前的事件與設定重新排通知（整批換掉）。
+func replan_notifications() -> void:
+	_replan_queued = false
+	var plan := NotifyPlan.build(data, data.notify, today(), now(), tz_bias(),
+		island.last_care_date if not island.archived else "", current_fade())
+	notifier.replace_all(plan)
+
+
+## 同一個畫面動作可能存檔好幾次，排通知等這一輪結束再做一次就好。
+func _queue_replan() -> void:
+	if not _replan_queued:
+		_replan_queued = true
+		replan_notifications.call_deferred()
+
+
+func set_notify(key: String, value) -> void:
+	var s := data.notify.duplicate()
+	s[key] = value
+	data.notify = NotifyPlan.clean_settings(s)
+	_commit()
+
+
+## 第一次完成事件之後，問一次要不要每天提醒。
+func should_ask_daily_reminder() -> bool:
+	return not data.notify.asked and data.total_completed >= 1 and not Tutorial.is_active(data.tutorial_step)
+
+
+func is_night() -> bool:
+	return DayCycle.is_night(now_minutes())
+
+
+func set_clock(minutes: int) -> void:
+	clock_override = minutes
+	daytime_changed.emit()
+
+
 # --- 事件 ---------------------------------------------------------------
 
-func add_event(title: String, subtask_titles: Array = []) -> Dictionary:
+## when：日期、時間、重複、提醒（見 Schedule），不給就是隨時都能做。
+func add_event(title: String, subtask_titles: Array = [], when: Dictionary = {}) -> Dictionary:
 	var ev := data.add_event(title, now(), subtask_titles)
 	if not ev.is_empty():
+		if not when.is_empty():
+			data.set_schedule(ev.id, when, today())
 		_tutorial("event_added")
 		_commit()
 	return ev
+
+
+func set_schedule(id: int, when: Dictionary) -> bool:
+	var ok := data.set_schedule(id, when, today())
+	if ok:
+		_commit()
+	return ok
+
+
+## 重複事件跳過這一次（不給素材）。
+func skip_occurrence(id: int) -> bool:
+	var ok := not data.skip_occurrence(id, today()).is_empty()
+	if ok:
+		_commit()
+	return ok
+
+
+func move_to_today(id: int) -> bool:
+	var ok := data.move_to_today(id, today())
+	if ok:
+		_commit()
+	return ok
 
 
 ## 完成事件：給素材與植物、照顧島嶼（恢復顏色），並讓一隻動物來訪。
@@ -216,7 +302,7 @@ func tick() -> void:
 func wander() -> void:
 	if island.animals.is_empty():
 		return
-	island.wander(rng)
+	island.wander(rng, is_night())
 	animals_moved.emit()
 
 
@@ -233,7 +319,7 @@ func island_summaries() -> Array:
 	for island_id in data.island_ids:
 		var isl: IslandData = island if island_id == island.id else load_island(island_id)
 		out.append({"id": island_id, "name": isl.display_name(), "blocks": isl.block_count(),
-			"plants": isl.plants.size(), "animals": isl.animals.size(), "current": island_id == island.id})
+			"plants": isl.plants.values().filter(func(v): return Catalog.is_plant(v)).size(), "animals": isl.animals.size(), "current": island_id == island.id})
 	return out
 
 
@@ -421,6 +507,7 @@ func _commit() -> void:
 	save_game()
 	if cloud:
 		cloud.mark_changed()
+	_queue_replan()
 	changed.emit()
 
 

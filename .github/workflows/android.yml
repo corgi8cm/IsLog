@@ -22,7 +22,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
 
@@ -92,6 +92,31 @@ jobs:
 
       - name: Import project
         run: godot --headless --path . --import
+
+      # 通知外掛要用 Gradle 建置匯出：先裝 Android 建置模板（android/build），
+      # 再用模板裡的 godot-lib 編譯 android_plugin/，產生 addons/islog_notify/bin/islog_notify.aar。
+      - name: Install Android build template
+        run: |
+          mkdir -p android/build
+          unzip -q -o ~/godot-android-templates/android_source.zip -d android/build
+          echo "${GODOT_VERSION}.stable" > android/.build_version
+          touch android/build/.gdignore
+          find android/build -name "godot-lib*.aar" | head
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.10.2"
+
+      - name: Build notification plugin
+        run: |
+          GODOT_AAR=$(find android/build -name "godot-lib*release*.aar" | head -1)
+          if [ -z "$GODOT_AAR" ]; then GODOT_AAR=$(find android/build -name "godot-lib*.aar" | head -1); fi
+          echo "使用 $GODOT_AAR"
+          mkdir -p android_plugin/libs
+          unzip -p "$GODOT_AAR" classes.jar > android_plugin/libs/godot-lib.jar
+          gradle -p android_plugin assembleRelease --no-daemon
+          cp "$(find android_plugin/build/outputs/aar -name '*release*.aar' | head -1)" addons/islog_notify/bin/islog_notify.aar
+          ls -la addons/islog_notify/bin
 
       - name: Run tests
         run: |

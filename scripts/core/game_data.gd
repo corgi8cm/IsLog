@@ -12,7 +12,8 @@ const SAVE_VERSION := 2
 
 var inventory: Dictionary = Materials.empty_inventory()
 var plants: Dictionary = Catalog.empty_plant_inventory()
-## 每個事件：{id, title, created, done_date, done_at, rewards, plant, visitor, subtasks}
+## 每個事件：{id, title, created, done_date, done_at, rewards, plant, visitor, subtasks,
+##   due_date, due_time, repeat, remind, streak}（日期、時間、重複的意思見 Schedule）
 ## 每個子事件：{id, title, done_date, done_at, rewards, self_done}
 ## done_date 為空字串代表尚未完成；self_done 代表玩家自己打勾（直接完成母事件時一起打勾的為 false）。
 var events: Array = []
@@ -26,6 +27,9 @@ var total_completed := 0
 var is_pro := false
 ## 圖鑑：來過的動物 → 第一次來訪的日期。
 var seen_animals: Dictionary = {}
+## 圖鑑：拿到過的光源 → 第一次拿到的日期；下一次送哪一種（依 Catalog.light_ids() 輪流）。
+var seen_lights: Dictionary = {}
+var next_light := 0
 ## 新手引導進度；預設為已完成，只有全新開始的遊戲會從頭開始。
 var tutorial_step: int = Tutorial.Step.DONE
 ## 已經顯示過的情境提示（第一次達到每日上限、第一次褪色……）。
@@ -44,6 +48,8 @@ const EVENTS_PER_DESIGN_SLOT := 30
 ## 做好的自訂方塊數量放在 inventory["custom:<id>"]。
 var custom_designs: Array = []
 var next_design_id := 1
+## 通知設定（見 NotifyPlan.DEFAULTS）。
+var notify: Dictionary = NotifyPlan.DEFAULTS.duplicate()
 
 
 # --- 自訂方塊 -------------------------------------------------------------
@@ -93,7 +99,8 @@ func find_design(design_id: int) -> Dictionary:
 	return {}
 
 
-func add_event(title: String, now_unix: int, subtask_titles: Array = []) -> Dictionary:
+## when：{due_date, due_time, repeat, remind}，可以只給一部分；沒給就是隨時都能做。
+func add_event(title: String, now_unix: int, subtask_titles: Array = [], when: Dictionary = {}) -> Dictionary:
 	title = title.strip_edges()
 	if title.is_empty():
 		return {}
@@ -107,12 +114,100 @@ func add_event(title: String, now_unix: int, subtask_titles: Array = []) -> Dict
 		"plant": "",
 		"visitor": "",
 		"subtasks": [],
+		"due_date": "",
+		"due_time": -1,
+		"repeat": {},
+		"remind": -1,
+		"streak": 0,
 	}
 	next_id += 1
 	events.append(ev)
 	for t in subtask_titles:
 		add_subtask(ev.id, str(t))
+	if not when.is_empty():
+		set_schedule(ev.id, when)
 	return ev
+
+
+# --- 日期、時間、重複 -------------------------------------------------------
+
+## 設定還沒完成的事件的日期、時間、重複與提醒。重複的事件一定要有日期（沒給就用 today）。
+func set_schedule(id: int, when: Dictionary, today: String = "") -> bool:
+	var ev := find_event(id)
+	if ev.is_empty() or ev.done_date != "":
+		return false
+	var date := str(when.get("due_date", ev.due_date))
+	if date != "" and not Schedule.is_valid_date(date):
+		return false
+	var rule := Schedule.clean_rule(when.get("repeat", ev.repeat))
+	if not rule.is_empty() and date == "":
+		date = today if today != "" else Time.get_date_string_from_system()
+	var t := int(when.get("due_time", ev.due_time))
+	ev.due_date = date
+	ev.due_time = clampi(t, 0, 1439) if t >= 0 and date != "" else -1
+	ev.repeat = rule
+	var r := int(when.get("remind", ev.remind))
+	ev.remind = r if r in Schedule.REMIND_CHOICES and date != "" else -1
+	if rule.is_empty():
+		ev.streak = 0
+	return true
+
+
+## 重複事件的下一次：同樣的標題、子事件、時間與提醒，日期換成規則的下一天。
+func _spawn_next(ev: Dictionary, after: String, streak: int) -> Dictionary:
+	var titles: Array = ev.subtasks.map(func(s): return s.title)
+	var next_date := Schedule.next_date(ev.repeat, ev.due_date, after)
+	var nxt := add_event(ev.title, int(ev.created), titles)
+	nxt.due_date = next_date
+	nxt.due_time = ev.due_time
+	nxt.repeat = ev.repeat.duplicate(true)
+	nxt.remind = ev.remind
+	nxt.streak = streak
+	return nxt
+
+
+## 跳過這一次重複事件：不給素材，直接排到下一次，連續紀錄歸零。回傳下一次的事件。
+func skip_occurrence(id: int, today: String) -> Dictionary:
+	var ev := find_event(id)
+	if ev.is_empty() or ev.done_date != "" or not Schedule.is_repeating(ev):
+		return {}
+	var after: String = ev.due_date if ev.due_date >= today else Schedule.add_days(today, -1)
+	ev.due_date = Schedule.next_date(ev.repeat, ev.due_date, after)
+	ev.streak = 0
+	for sub in ev.subtasks:
+		sub.done_date = ""
+		sub.done_at = 0
+		sub.rewards = []
+		sub.self_done = false
+	return ev
+
+
+## 之前沒做完的事件改到今天。
+func move_to_today(id: int, today: String) -> bool:
+	var ev := find_event(id)
+	if ev.is_empty() or ev.done_date != "" or ev.due_date == "" or ev.due_date >= today:
+		return false
+	if Schedule.is_repeating(ev):
+		ev.streak = 0
+	ev.due_date = today
+	return true
+
+
+## 某一天預定要做的事（含重複事件推算出來的未來日子），給月曆用。
+## 回傳 [{title, time, repeat: bool, id}]；過去的日子不推算。
+func planned_on(date: String, today: String) -> Array:
+	var out: Array = []
+	for ev in pending_events():
+		var due: String = ev.due_date
+		if due == "":
+			continue
+		var hit := due == date
+		if not hit and Schedule.is_repeating(ev) and date > due and date >= today:
+			hit = Schedule.occurs_on(ev.repeat, due, date)
+		if hit:
+			out.append({"title": ev.title, "time": ev.due_time, "repeat": Schedule.is_repeating(ev), "id": ev.id})
+	out.sort_custom(func(a, b): return (a.time if a.time >= 0 else 9999) < (b.time if b.time >= 0 else 9999))
+	return out
 
 
 func find_event(id: int) -> Dictionary:
@@ -288,7 +383,30 @@ func complete_event(id: int, today: String, now_unix: int, rng: RandomNumberGene
 	ev.done_at = now_unix
 	ev.rewards = rewards
 	ev.plant = plant
-	return {"ok": true, "rewards": rewards, "plant": plant, "capped": rewards.is_empty(), "bonus": bonus}
+	# 重複事件：排好下一次；在預定日當天或之前完成才算連續
+	var next_id_out := -1
+	var light := ""
+	if Schedule.is_repeating(ev):
+		var on_time: bool = ev.due_date == "" or today <= ev.due_date
+		ev.streak = int(ev.streak) + 1 if on_time else 1
+		var after: String = ev.due_date if ev.due_date > today else today
+		next_id_out = _spawn_next(ev, after, ev.streak).id
+		# 連續準時完成每滿 3 次送一盞光源（不受每日素材上限影響）
+		if on_time and ev.streak % Catalog.LIGHT_STREAK == 0:
+			light = _give_light(today)
+	return {"ok": true, "rewards": rewards, "plant": plant, "capped": rewards.is_empty(), "bonus": bonus,
+		"next": next_id_out, "light": light, "streak": int(ev.get("streak", 0))}
+
+
+## 依序送出下一種光源，回傳 id。
+func _give_light(today: String) -> String:
+	var ids := Catalog.light_ids()
+	var light: String = ids[next_light % ids.size()]
+	next_light += 1
+	plants[light] = int(plants.get(light, 0)) + 1
+	if not seen_lights.has(light):
+		seen_lights[light] = today
+	return light
 
 
 func _roll_day(today: String) -> void:
@@ -326,6 +444,8 @@ func to_dict() -> Dictionary:
 		"total_completed": total_completed,
 		"is_pro": is_pro,
 		"seen_animals": seen_animals.duplicate(),
+		"seen_lights": seen_lights.duplicate(),
+		"next_light": next_light,
 		"tutorial_step": tutorial_step,
 		"tips_shown": tips_shown.duplicate(),
 		"island_ids": island_ids.duplicate(),
@@ -334,6 +454,7 @@ func to_dict() -> Dictionary:
 			"id": d.id, "base": d.base,
 			"top": CustomBlocks.to_hex(d.top), "side": CustomBlocks.to_hex(d.side)}),
 		"next_design_id": next_design_id,
+		"notify": notify.duplicate(),
 	}
 
 
@@ -351,7 +472,7 @@ static func from_dict(d: Dictionary) -> GameData:
 	for t in Materials.TYPES:
 		g.inventory[t] = int(inv.get(t, 0))
 	var plant_inv: Dictionary = d.get("plants", {})
-	for id in Catalog.plant_ids():
+	for id in Catalog.plant_ids() + Catalog.light_ids():
 		g.plants[id] = int(plant_inv.get(id, 0))
 	var max_id := 0
 	for raw in d.get("events", []):
@@ -380,7 +501,22 @@ static func from_dict(d: Dictionary) -> GameData:
 			"plant": str(raw.get("plant", "")),
 			"visitor": str(raw.get("visitor", "")),
 			"subtasks": subtasks,
+			"due_date": "",
+			"due_time": -1,
+			"repeat": {},
+			"remind": -1,
+			"streak": maxi(0, int(raw.get("streak", 0))),
 		})
+		# v0.5.0 之前的存檔沒有日期欄位：隨時都能做
+		var loaded: Dictionary = g.events.back()
+		var date := str(raw.get("due_date", ""))
+		if Schedule.is_valid_date(date):
+			loaded.due_date = date
+			var t := int(raw.get("due_time", -1))
+			loaded.due_time = t if t >= 0 and t < 1440 else -1
+			loaded.repeat = Schedule.clean_rule(raw.get("repeat", {}))
+			var r := int(raw.get("remind", -1))
+			loaded.remind = r if r in Schedule.REMIND_CHOICES else -1
 		max_id = maxi(max_id, g.events.back().id)
 	g.next_id = maxi(int(d.get("next_id", 1)), max_id + 1)
 	g.daily_date = str(d.get("daily_date", ""))
@@ -394,6 +530,12 @@ static func from_dict(d: Dictionary) -> GameData:
 		for species in seen:
 			if Catalog.is_animal(str(species)):
 				g.seen_animals[str(species)] = str(seen[species])
+	var seen_l = d.get("seen_lights", {})
+	if typeof(seen_l) == TYPE_DICTIONARY:
+		for light in seen_l:
+			if Catalog.is_light(str(light)):
+				g.seen_lights[str(light)] = str(seen_l[light])
+	g.next_light = maxi(0, int(d.get("next_light", 0)))
 	g.tutorial_step = clampi(int(d.get("tutorial_step", Tutorial.Step.DONE)), 0, Tutorial.Step.DONE)
 	for raw in d.get("custom_designs", []):
 		if typeof(raw) != TYPE_DICTIONARY or not Materials.is_valid(str(raw.get("base", ""))):
@@ -417,6 +559,7 @@ static func from_dict(d: Dictionary) -> GameData:
 	g.current_island = int(d.get("current_island", g.island_ids[0]))
 	if not g.island_ids.has(g.current_island):
 		g.current_island = g.island_ids[0]
+	g.notify = NotifyPlan.clean_settings(d.get("notify", {}))
 	var tips = d.get("tips_shown", {})
 	if typeof(tips) == TYPE_DICTIONARY:
 		for k in tips:

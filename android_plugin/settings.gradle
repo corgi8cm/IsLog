@@ -1,0 +1,18 @@
+// 空島事記的 Android 通知外掛（Godot Android plugin v2）。
+// CI 會把 Godot 的 godot-lib 放到 libs/godot-lib.jar 再建置，見 .github/workflows/android.yml。
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = "islog-notify"

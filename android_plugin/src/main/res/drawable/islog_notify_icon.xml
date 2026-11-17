@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 通知列的小圖示：方塊上打勾（單色，系統會自動上色） -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12,2L21,6.5L21,17.5L12,22L3,17.5L3,6.5ZM10.6,15.6L17,9.2L15.6,7.8L10.6,12.8L8.4,10.6L7,12Z" />
+</vector>

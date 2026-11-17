@@ -27,6 +27,8 @@ func _run() -> void:
 	var game = root.get_node("Game")
 	game.save_root = "user://ui_smoke"
 	game.data = GameData.new()
+	# 「要不要每天提醒」只問一次；這裡先當作問過，避免對話框擋住其他測試
+	game.data.notify.asked = true
 	game.island = IslandData.new()
 	game.data.inventory[Materials.DIRT] = 2
 
@@ -73,6 +75,17 @@ func _run() -> void:
 	check(not game.island.plants.has(cell) and game.island.has_block(cell), "移除先收回植物，方塊還在")
 	check(game.data.plants["flower"] == 1, "植物退回背包")
 
+	# 光源模式：點方塊頂面放路燈；移除模式收回
+	game.data.plants["lamp"] = 1
+	page.call("_select_tool", "light")
+	await _frames()
+	await _click(top_face)
+	check(game.island.plants.get(cell, "") == "lamp", "點方塊放路燈")
+	check(game.data.plants["lamp"] == 0, "放路燈扣背包")
+	page.call("_select_tool", "remove")
+	await _click(top_face)
+	check(not game.island.plants.has(cell) and game.data.plants["lamp"] == 1, "移除收回路燈")
+
 	# 事件頁：展開子事件、新增、完成
 	main.call("_show_page", 0)
 	var events_page = main.get("_pages")[0]
@@ -90,11 +103,33 @@ func _run() -> void:
 	check(_find(events_page, func(n): return n is Label and n.text == "整理房間（0/2）") != null, "顯示進度 0/2")
 	for i in 2:
 		var row: Node = _find(events_page, func(n): return n is Label and n.text == ev.subtasks[i].title).get_parent()
-		var btn: Button = _find(row, func(n): return n is Button and n.text == "完成")
+		var btn: Button = _find(row, func(n): return n is Button and n.tooltip_text == "完成")
 		btn.pressed.emit()
 		await _frames()
 	check(ev.done_date != "", "兩個子事件完成後母事件自動完成")
-	check(_find(events_page, func(n): return n is Label and n.text.begins_with("✓ 整理房間")) != null, "出現在今天完成")
+	check(_find(events_page, func(n): return n is Label and n.text.begins_with("整理房間（子事件")) != null, "出現在今天完成")
+
+	# 設定時間：自訂時間用上午／下午與滾輪
+	_button(events_page, "設定時間").pressed.emit()
+	await _frames()
+	var dialog: Node = main.get_child(-1)
+	_button(dialog, "今天").pressed.emit()
+	await _frames()
+	_button(dialog, "設置時間").pressed.emit()
+	await _frames()
+	var wheels := dialog.find_children("*", "TimeWheel", true, false)
+	check(wheels.size() == 2, "設置時間顯示時、分兩個滾輪")
+	if wheels.size() == 2:
+		check(wheels[0].value() == 9 and wheels[1].value() == 0, "從上午 9:00 開始撥")
+		wheels[0].step(1)
+		wheels[1].step(-25)
+		_button(dialog, "下午").button_pressed = true
+		await _frames()
+		_button(dialog, "確定").pressed.emit()
+		await _frames()
+		var when: Dictionary = events_page.get("_pending_when")
+		check(int(when.get("due_time", -1)) == 22 * 60 + 35, "撥到下午 10:35")
+	events_page.set("_pending_when", {})
 
 	# 拍照模式：隱藏介面與格線，返回後恢復（不測儲存，避免寫進電腦的圖片資料夾）
 	main.call("_show_page", 1)
@@ -149,7 +184,8 @@ func _run() -> void:
 	await _frames()
 	_button(page, "＋ 設計").pressed.emit()
 	await _frames()
-	_button(main, "石").pressed.emit()
+	# 設計視窗最後加進主畫面；只在視窗裡找，避免找到工具列的石頭
+	_button(main.get_child(main.get_child_count() - 1), "石").pressed.emit()
 	await _frames()
 	var canvas: Control = _find(main, func(n): return n.get_script() != null and n.has_signal("painted"))
 	var corner: Vector2 = canvas.get_global_rect().position + Vector2(4, 4)
@@ -200,7 +236,7 @@ func _close_modals(main: Control) -> void:
 
 
 func _button(node: Node, text: String) -> Button:
-	return _find(node, func(n): return n is Button and n.text == text and n.is_visible_in_tree()) as Button
+	return _find(node, func(n): return n is Button and (n.text == text or n.tooltip_text == text) and n.is_visible_in_tree()) as Button
 
 
 ## 帳號綁定：第一次備份、兩邊都有進度時選雲端、只有雲端有進度時自動還原。

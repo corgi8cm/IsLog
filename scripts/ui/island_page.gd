@@ -4,6 +4,7 @@ extends Control
 const IslandView := preload("res://scripts/ui/island_view.gd")
 const REMOVE_MODE := "remove"
 const PLANT_MODE := "plant"
+const LIGHT_MODE := "light"
 const CUSTOM_MODE := "custom"
 
 var view: IslandView
@@ -18,6 +19,7 @@ var _custom_row: HBoxContainer
 var _custom_scroll: ScrollContainer
 var _custom_choice := ""
 var _plant_choice := ""
+var _light_choice := ""
 var _codex_button: Button
 ## 平常的操作介面（拍照模式時隱藏）。
 var _normal_ui: Array[Control] = []
@@ -34,36 +36,44 @@ func _ready() -> void:
 	add_child(view)
 	view.cell_tapped.connect(_on_cell_tapped)
 
-	# 左側：樓層切換
-	var layer_box := VBoxContainer.new()
-	layer_box.add_theme_constant_override("separation", 8)
+	# 左側：樓層（上下箭頭夾著數字）
+	var layer_box := PanelContainer.new()
+	layer_box.theme_type_variation = "Bar"
 	add_child(layer_box)
 	layer_box.set_anchors_and_offsets_preset(PRESET_TOP_LEFT, PRESET_MODE_MINSIZE, 16)
-	var up := UiKit.button("▲ 上一層", _change_layer.bind(1))
-	var down := UiKit.button("▼ 下一層", _change_layer.bind(-1))
-	_layer_label = UiKit.label("", 26)
+	var layer_col := VBoxContainer.new()
+	layer_col.add_theme_constant_override("separation", 0)
+	layer_box.add_child(layer_col)
+	var up := UiKit.icon_button("up", "上一層", _change_layer.bind(1), 56)
+	up.theme_type_variation = "FlatButton"
+	var down := UiKit.icon_button("down", "下一層", _change_layer.bind(-1), 56)
+	down.theme_type_variation = "FlatButton"
+	_layer_label = UiKit.label("", 40)
 	_layer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	layer_box.add_child(up)
-	layer_box.add_child(UiKit.chip(_layer_label, Color(1, 1, 1, 0.75)))
-	layer_box.add_child(down)
+	var unit := UiKit.label("層", 18, "Muted")
+	unit.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	layer_col.add_child(up)
+	layer_col.add_child(_layer_label)
+	layer_col.add_child(unit)
+	layer_col.add_child(down)
 
-	# 右側：鏡頭
+	# 右側：鏡頭與其他功能（圓形圖示按鈕）
 	var cam_box := VBoxContainer.new()
-	cam_box.add_theme_constant_override("separation", 8)
+	cam_box.add_theme_constant_override("separation", 12)
 	add_child(cam_box)
 	cam_box.grow_horizontal = GROW_DIRECTION_BEGIN
 	cam_box.set_anchors_and_offsets_preset(PRESET_TOP_RIGHT, PRESET_MODE_MINSIZE, 16)
-	cam_box.add_child(UiKit.button("旋轉", func(): view.rotation_step += 1))
-	cam_box.add_child(UiKit.button("放大", func(): view.zoom_at(1.25, view.size * 0.5)))
-	cam_box.add_child(UiKit.button("縮小", func(): view.zoom_at(0.8, view.size * 0.5)))
-	cam_box.add_child(UiKit.button("置中", view.reset_view))
-	_codex_button = UiKit.button("圖鑑", func():
+	cam_box.add_child(UiKit.icon_button("rotate", "旋轉", func(): view.rotation_step += 1))
+	cam_box.add_child(UiKit.icon_button("zoom_in", "放大", func(): view.zoom_at(1.25, view.size * 0.5)))
+	cam_box.add_child(UiKit.icon_button("zoom_out", "縮小", func(): view.zoom_at(0.8, view.size * 0.5)))
+	cam_box.add_child(UiKit.icon_button("center", "置中", view.reset_view))
+	_codex_button = UiKit.icon_button("book", "圖鑑", func():
 		Encyclopedia.open(_modal_host())
 		if Game.data.tutorial_step == Tutorial.Step.MEET:
 			Game.tutorial_button())
 	cam_box.add_child(_codex_button)
-	cam_box.add_child(UiKit.button("拍照", set_photo_mode.bind(true)))
-	cam_box.add_child(UiKit.button("我的島", func(): IslandsDialog.open(_modal_host())))
+	cam_box.add_child(UiKit.icon_button("camera", "拍照", set_photo_mode.bind(true)))
+	cam_box.add_child(UiKit.icon_button("islands", "我的島", func(): IslandsDialog.open(_modal_host())))
 
 	# 下方：素材與移除
 	var bottom := VBoxContainer.new()
@@ -71,19 +81,17 @@ func _ready() -> void:
 	bottom.grow_vertical = GROW_DIRECTION_BEGIN
 	bottom.offset_left = 12
 	bottom.offset_right = -12
-	bottom.offset_bottom = -12
+	bottom.offset_bottom = -4
 	bottom.add_theme_constant_override("separation", 8)
 	add_child(bottom)
 
-	_status = UiKit.label("", 22)
+	_status = UiKit.label("", 22, "Muted")
 	_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_status.add_theme_color_override("font_color", Color("6b7480"))
 	bottom.add_child(_status)
 
 	_hint = UiKit.label("", 24)
 	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_hint.add_theme_color_override("font_color", Color("36506b"))
 	bottom.add_child(_hint)
 
 	_plant_scroll = ScrollContainer.new()
@@ -101,30 +109,29 @@ func _ready() -> void:
 	_custom_row.add_theme_constant_override("separation", 8)
 	_custom_scroll.add_child(_custom_row)
 
+	var tool_bar := PanelContainer.new()
+	tool_bar.theme_type_variation = "Bar"
+	bottom.add_child(tool_bar)
 	var tools := HBoxContainer.new()
-	tools.add_theme_constant_override("separation", 6)
-	bottom.add_child(tools)
+	tools.add_theme_constant_override("separation", 2)
+	tool_bar.add_child(tools)
 	var group := ButtonGroup.new()
 	for t in Materials.TYPES:
-		var b := UiKit.tool_button(group, Materials.top_color(t))
+		var cube := UiKit.mini_cube(t)
+		cube.half = 17
+		var b := UiKit.tile_button(group, cube, "0")
+		b.tooltip_text = Materials.display_name(t)
 		b.pressed.connect(_select_tool.bind(t))
 		tools.add_child(b)
 		_tool_buttons[t] = b
-	var pl := UiKit.tool_button(group, Color("c5e1a5"))
-	pl.text = "植物"
-	pl.pressed.connect(_select_tool.bind(PLANT_MODE))
-	tools.add_child(pl)
-	_tool_buttons[PLANT_MODE] = pl
-	var cu := UiKit.tool_button(group, Color("e1d5f5"))
-	cu.text = "自訂"
-	cu.pressed.connect(_select_tool.bind(CUSTOM_MODE))
-	tools.add_child(cu)
-	_tool_buttons[CUSTOM_MODE] = cu
-	var rm := UiKit.tool_button(group, Color("f2b8b5"))
-	rm.text = "移除"
-	rm.pressed.connect(_select_tool.bind(REMOVE_MODE))
-	tools.add_child(rm)
-	_tool_buttons[REMOVE_MODE] = rm
+	for item in [[PLANT_MODE, "plant", "植物"], [LIGHT_MODE, "lamp", "光源"], [CUSTOM_MODE, "brush", "自訂"], [REMOVE_MODE, "erase", "移除"]]:
+		var b := UiKit.tile_button(group, UiKit.icon(item[1]), item[2])
+		b.text = item[2]
+		for key in ["font_color", "font_pressed_color", "font_hover_color", "font_hover_pressed_color"]:
+			b.add_theme_color_override(key, Color.TRANSPARENT)
+		b.pressed.connect(_select_tool.bind(item[0]))
+		tools.add_child(b)
+		_tool_buttons[item[0]] = b
 	_tool_buttons[_tool].button_pressed = true
 
 	_normal_ui = [layer_box, cam_box, bottom]
@@ -143,10 +150,6 @@ func _build_photo_ui() -> void:
 	add_child(_photo_ui)
 	var stamp := UiKit.label("", 26)
 	stamp.name = "Stamp"
-	stamp.add_theme_color_override("font_color", Color(1, 1, 1, 0.95))
-	stamp.add_theme_color_override("font_shadow_color", Color(0.1, 0.2, 0.3, 0.45))
-	stamp.add_theme_constant_override("shadow_offset_x", 2)
-	stamp.add_theme_constant_override("shadow_offset_y", 2)
 	_photo_ui.add_child(stamp)
 	stamp.set_anchors_and_offsets_preset(PRESET_TOP_LEFT, PRESET_MODE_MINSIZE, 24)
 
@@ -161,7 +164,6 @@ func _build_photo_ui() -> void:
 	_photo_hint = UiKit.label("拖曳、縮放、旋轉調整角度後按「儲存照片」", 22)
 	_photo_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_photo_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_photo_hint.add_theme_color_override("font_color", Color("36506b"))
 	bottom.add_child(_photo_hint)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
@@ -249,6 +251,8 @@ func _on_cell_tapped(pos: Vector2) -> void:
 			_remove_at(_tapped_block(pos))
 		PLANT_MODE:
 			_plant_at(_tapped_block(pos))
+		LIGHT_MODE:
+			_light_at(_tapped_block(pos))
 		CUSTOM_MODE:
 			if _custom_choice == "":
 				_flash("先設計一個方塊")
@@ -293,9 +297,30 @@ func _plant_at(cell: Vector3i) -> void:
 			_flash("%s用完了" % pname)
 
 
+func _light_at(cell: Vector3i) -> void:
+	if _light_choice == "":
+		_flash("還沒有光源，重複事件連續準時完成 %d 次可以拿到" % Catalog.LIGHT_STREAK)
+		return
+	var lname := Catalog.light_name(_light_choice)
+	match Game.island.plant_problem(cell, _light_choice, Game.data.plants):
+		"":
+			Game.plant(cell, _light_choice)
+		"no_block":
+			_flash("點一個方塊來放%s" % lname)
+		"on_water":
+			_flash("%s不能放在水上" % lname)
+		"occupied":
+			_flash("這裡已經放了東西")
+		"covered":
+			_flash("上面被方塊蓋住了")
+		"no_plant":
+			_flash("%s用完了" % lname)
+
+
 func _remove_at(cell: Vector3i) -> void:
 	if Game.island.plants.has(cell):
-		_flash("收回 1 株%s" % Catalog.plant_name(Game.remove_plant(cell)))
+		var id := Game.remove_plant(cell)
+		_flash(("收回 1 個%s" if Catalog.is_light(id) else "收回 1 株%s") % Catalog.decor_name(id))
 		return
 	var removed := Game.remove_block(cell)
 	_flash("退回 1 個%s" % Materials.display_name(removed) if removed != "" else "這裡沒有方塊")
@@ -310,9 +335,9 @@ func _flash(text: String) -> void:
 
 
 func _refresh() -> void:
-	_layer_label.text = "第 %d 層" % (view.layer + 1)
+	_layer_label.text = str(view.layer + 1)
 	for t in Materials.TYPES:
-		_tool_buttons[t].text = "%s %d" % [Materials.display_name(t), Game.data.inventory.get(t, 0)]
+		(_tool_buttons[t].get_meta("caption") as Label).text = str(Game.data.inventory.get(t, 0))
 	_refresh_plants()
 	_refresh_custom()
 	_refresh_status()
@@ -327,11 +352,6 @@ func _refresh_status() -> void:
 		lines.append("島褪成灰色了。連續幾天完成事件，顏色會慢慢回來")
 	elif fade > 0.0:
 		lines.append("島正在褪色（%d%%），完成事件讓它恢復顏色" % roundi(fade * 100))
-	var names := []
-	for a in Game.island.animals:
-		names.append(Catalog.animal_name(a.species) + ("？" if a.confused_since != 0 else ""))
-	if not names.is_empty():
-		lines.append("島上的動物：" + "、".join(names))
 	_status.text = "
 ".join(lines)
 	_status.visible = not lines.is_empty()
@@ -351,7 +371,7 @@ func _refresh_custom() -> void:
 		var col := VBoxContainer.new()
 		col.add_theme_constant_override("separation", 4)
 		_custom_row.add_child(col)
-		var b := UiKit.tool_button(group, Color("f4f8fb"))
+		var b := UiKit.tool_button(group, Color("fffaf0"))
 		b.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 		b.custom_minimum_size = Vector2(100, 84)
 		b.button_pressed = type == _custom_choice
@@ -378,26 +398,36 @@ func _refresh_custom() -> void:
 	_custom_row.add_child(add)
 
 
+## 植物與光源共用下面這一排選擇列。
 func _refresh_plants() -> void:
-	_plant_scroll.visible = _tool == PLANT_MODE
+	var lights := _tool == LIGHT_MODE
+	_plant_scroll.visible = _tool == PLANT_MODE or lights
 	var owned := []
-	for id in Catalog.plant_ids():
+	for id in (Catalog.light_ids() if lights else Catalog.plant_ids()):
 		if int(Game.data.plants.get(id, 0)) > 0:
 			owned.append(id)
-	if not owned.has(_plant_choice):
+	if lights:
+		if not owned.has(_light_choice):
+			_light_choice = owned[0] if not owned.is_empty() else ""
+	elif not owned.has(_plant_choice):
 		_plant_choice = owned[0] if not owned.is_empty() else ""
 	for c in _plant_row.get_children():
 		c.queue_free()
 	if owned.is_empty():
-		_plant_row.add_child(UiKit.label("還沒有植物，完成事件有機會掉落", 24))
+		var empty := "還沒有光源，重複事件連續準時完成 %d 次送一盞" % Catalog.LIGHT_STREAK if lights else "還沒有植物，完成事件有機會掉落"
+		_plant_row.add_child(UiKit.label(empty, 24))
 		return
 	var group := ButtonGroup.new()
 	for id in owned:
-		var base := Catalog.plant_base(id)
-		var b := UiKit.tool_button(group, Materials.top_color(base).lightened(0.35))
+		var bg := Color("ffe2a8") if lights else Materials.top_color(Catalog.plant_base(id)).lightened(0.35)
+		var b := UiKit.tool_button(group, bg)
 		b.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 		b.custom_minimum_size = Vector2(0, 60)
-		b.text = "%s %d" % [Catalog.plant_name(id), Game.data.plants[id]]
-		b.button_pressed = id == _plant_choice
-		b.pressed.connect(func(): _plant_choice = id)
+		b.text = "%s %d" % [Catalog.decor_name(id), Game.data.plants[id]]
+		if lights:
+			b.button_pressed = id == _light_choice
+			b.pressed.connect(func(): _light_choice = id)
+		else:
+			b.button_pressed = id == _plant_choice
+			b.pressed.connect(func(): _plant_choice = id)
 		_plant_row.add_child(b)
