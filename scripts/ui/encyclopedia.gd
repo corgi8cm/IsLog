@@ -106,7 +106,7 @@ static func _lights_page(body: VBoxContainer) -> void:
 		icon.seen = is_seen
 		icon.custom_minimum_size = Vector2(0, 110)
 		col.add_child(icon)
-		var name_label := UiKit.label(Catalog.light_name(id) if is_seen else "？？？", 28)
+		var name_label := UiKit.label(Catalog.light_name(id) if is_seen else "???", 28)
 		name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		col.add_child(name_label)
 		var info := "第一次拿到\n%s" % Review.label(seen[id]) if is_seen else "還沒拿到"
@@ -140,7 +140,7 @@ static func _animals_page(body: VBoxContainer) -> void:
 		icon.seen = is_seen
 		icon.custom_minimum_size = Vector2(0, 110)
 		col.add_child(icon)
-		var name_label := UiKit.label(Catalog.animal_name(species) if is_seen else "？？？", 28)
+		var name_label := UiKit.label(Catalog.animal_name(species) if is_seen else "???", 28)
 		name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		col.add_child(name_label)
 		# 出現條件不寫出來，讓玩家自己發現（新手引導只說明每種動物條件不同）

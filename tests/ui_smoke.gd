@@ -115,10 +115,10 @@ func _run() -> void:
 	var dialog: Node = main.get_child(-1)
 	_button(dialog, "今天").pressed.emit()
 	await _frames()
-	_button(dialog, "自訂時間").pressed.emit()
+	_button(dialog, "設置時間").pressed.emit()
 	await _frames()
 	var wheels := dialog.find_children("*", "TimeWheel", true, false)
-	check(wheels.size() == 2, "自訂時間顯示時、分兩個滾輪")
+	check(wheels.size() == 2, "設置時間顯示時、分兩個滾輪")
 	if wheels.size() == 2:
 		check(wheels[0].value() == 9 and wheels[1].value() == 0, "從上午 9:00 開始撥")
 		wheels[0].step(1)

@@ -3,8 +3,7 @@ extends RefCounted
 ## 設定事件的日期、時間與重複（像日曆 App 那樣，但都用按鈕，不用打字）。
 
 
-const TIME_PRESETS := [["早上 8:00", 480], ["中午 12:00", 720], ["晚上 8:00", 1200]]
-## 按「自訂時間」時，沒有選過時間就從這裡開始撥。
+## 按「設置時間」時，沒有選過時間就從這裡開始撥。
 const CUSTOM_START := 9 * 60
 
 
@@ -24,8 +23,6 @@ static func open(host: Control, title: String, initial: Dictionary, today: Strin
 		"every": 2,
 		"days": [],
 	}
-	# 不是快速選項的時間：一打開就顯示滾輪
-	state.custom = state.time >= 0 and not TIME_PRESETS.any(func(p): return p[1] == state.time)
 	var rule: Dictionary = state.repeat
 	if rule.get("kind", "") == Schedule.EVERY:
 		state.every = int(rule.every)
@@ -95,21 +92,14 @@ static func _build(content: VBoxContainer, state: Dictionary, today: String) -> 
 		# 時間
 		content.add_child(UiKit.label("時間", 24, "Muted"))
 		var trow := _chips(content)
-		_chip(trow, "不指定", state.time < 0, func():
+		_chip(trow, "不設置", state.time < 0, func():
 			state.time = -1
-			state.custom = false
 			redo.call())
-		for preset in TIME_PRESETS:
-			_chip(trow, preset[0], state.time == preset[1] and not state.custom, func():
-				state.time = preset[1]
-				state.custom = false
-				redo.call())
-		_chip(trow, "自訂時間", state.custom, func():
+		_chip(trow, "設置時間", state.time >= 0, func():
 			if state.time < 0:
 				state.time = CUSTOM_START
-			state.custom = true
 			redo.call())
-		if state.custom:
+		if state.time >= 0:
 			_time_wheel(content, state)
 
 		# 重複
