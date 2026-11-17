@@ -32,7 +32,7 @@ class Paper extends Control:
 		Doodles.paper(self, Rect2(Vector2.ZERO, size), Game.now_minutes())
 
 
-## 右上角：時段圖示 + 今天拿到幾件素材（十顆點）。
+## 右上角：時段圖示 + 「今日素材」與今天拿到幾件（十顆點）。
 class DailyBadge extends Control:
 	var done := 0
 	var limit := 10
@@ -40,6 +40,7 @@ class DailyBadge extends Control:
 
 	func _ready() -> void:
 		custom_minimum_size = Vector2(172, 56)
+		tooltip_text = "今天完成事件拿到的素材"
 		Game.daytime_changed.connect(queue_redraw)
 
 	func _notification(what: int) -> void:
@@ -56,13 +57,16 @@ class DailyBadge extends Control:
 		draw_set_transform(Vector2(26, size.y * 0.5))
 		Icon.draw_glyph(self, glyph, UiKit.color("ink"))
 		draw_set_transform(Vector2.ZERO)
+		var font := get_theme_default_font()
+		var ink := UiKit.color("ink")
 		if pro:
-			var font := get_theme_default_font()
-			draw_string(font, Vector2(56, size.y * 0.5 + 9), "%d 件" % done, HORIZONTAL_ALIGNMENT_LEFT, -1, 26, UiKit.color("ink"))
+			draw_string(font, Vector2(56, size.y * 0.5 - 4), "今日素材", HORIZONTAL_ALIGNMENT_LEFT, -1, 17, Color(ink, 0.7))
+			draw_string(font, Vector2(56, size.y * 0.5 + 20), "%d 件" % done, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, ink)
 			return
+		draw_string(font, Vector2(56, size.y * 0.5 - 6), "今日素材 %d/%d" % [done, limit], HORIZONTAL_ALIGNMENT_LEFT, -1, 17, Color(ink, 0.7))
 		for i in limit:
-			var c := Vector2(66 + (i % 5) * 21, size.y * 0.5 - 10 + (i / 5) * 20)
-			draw_circle(c, 7, UiKit.color("accent") if i < done else Color(UiKit.color("ink"), 0.18))
+			var c := Vector2(61 + i * 11.4, size.y * 0.5 + 12)
+			draw_circle(c, 4.6, UiKit.color("accent") if i < done else Color(ink, 0.18))
 
 
 func _ready() -> void:

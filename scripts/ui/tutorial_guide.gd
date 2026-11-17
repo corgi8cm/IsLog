@@ -3,7 +3,9 @@ extends Control
 ## 引導進行中只能按亮起來的地方（對話框裡的按鈕、略過也可以按）。
 
 const DIM := Color(0.06, 0.1, 0.16, 0.62)
-const HOLE_PAD := 10.0
+const HOLE_PAD := 22.0
+## 亮起來的框至少這麼大（小格子、小按鈕也好點）。
+const HOLE_MIN := Vector2(128, 104)
 
 var main: Control
 var _target := Rect2()
@@ -75,7 +77,7 @@ func _process(delta: float) -> void:
 
 ## 引導進行中，亮起來的地方以外都擋住。
 func _has_point(point: Vector2) -> bool:
-	if _passthrough and _target.has_area() and _target.grow(HOLE_PAD).has_point(point):
+	if _passthrough and _target.has_area() and _hole().has_point(point):
 		return false
 	return true
 
@@ -207,8 +209,18 @@ func _place_bubble() -> void:
 
 # --- 畫面 ---------------------------------------------------------------
 
+## 亮起來的範圍：目標往外留邊，太小的再撐到最小尺寸（以目標中心為準）。
+func _hole() -> Rect2:
+	var r := _target.grow(HOLE_PAD)
+	var s := r.size.max(HOLE_MIN)
+	var pos := r.get_center() - s * 0.5
+	# 不要超出畫面（貼邊的按鈕撐大後會跑出去）
+	pos = pos.clamp(Vector2(4, 4), (size - s - Vector2(4, 4)).max(Vector2(4, 4)))
+	return Rect2(pos, s)
+
+
 func _draw() -> void:
-	var r := _target.grow(HOLE_PAD) if _target.has_area() else Rect2()
+	var r := _hole() if _target.has_area() else Rect2()
 	if r.has_area():
 		draw_rect(Rect2(0, 0, size.x, r.position.y), DIM)
 		draw_rect(Rect2(0, r.end.y, size.x, size.y - r.end.y), DIM)
