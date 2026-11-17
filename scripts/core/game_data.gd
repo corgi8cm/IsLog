@@ -27,6 +27,9 @@ var total_completed := 0
 var is_pro := false
 ## 圖鑑：來過的動物 → 第一次來訪的日期。
 var seen_animals: Dictionary = {}
+## 圖鑑：拿到過的光源 → 第一次拿到的日期；下一次送哪一種（依 Catalog.light_ids() 輪流）。
+var seen_lights: Dictionary = {}
+var next_light := 0
 ## 新手引導進度；預設為已完成，只有全新開始的遊戲會從頭開始。
 var tutorial_step: int = Tutorial.Step.DONE
 ## 已經顯示過的情境提示（第一次達到每日上限、第一次褪色……）。
@@ -382,13 +385,28 @@ func complete_event(id: int, today: String, now_unix: int, rng: RandomNumberGene
 	ev.plant = plant
 	# 重複事件：排好下一次；在預定日當天或之前完成才算連續
 	var next_id_out := -1
+	var light := ""
 	if Schedule.is_repeating(ev):
 		var on_time: bool = ev.due_date == "" or today <= ev.due_date
 		ev.streak = int(ev.streak) + 1 if on_time else 1
 		var after: String = ev.due_date if ev.due_date > today else today
 		next_id_out = _spawn_next(ev, after, ev.streak).id
+		# 連續準時完成每滿 3 次送一盞光源（不受每日素材上限影響）
+		if on_time and ev.streak % Catalog.LIGHT_STREAK == 0:
+			light = _give_light(today)
 	return {"ok": true, "rewards": rewards, "plant": plant, "capped": rewards.is_empty(), "bonus": bonus,
-		"next": next_id_out}
+		"next": next_id_out, "light": light, "streak": int(ev.get("streak", 0))}
+
+
+## 依序送出下一種光源，回傳 id。
+func _give_light(today: String) -> String:
+	var ids := Catalog.light_ids()
+	var light: String = ids[next_light % ids.size()]
+	next_light += 1
+	plants[light] = int(plants.get(light, 0)) + 1
+	if not seen_lights.has(light):
+		seen_lights[light] = today
+	return light
 
 
 func _roll_day(today: String) -> void:
@@ -426,6 +444,8 @@ func to_dict() -> Dictionary:
 		"total_completed": total_completed,
 		"is_pro": is_pro,
 		"seen_animals": seen_animals.duplicate(),
+		"seen_lights": seen_lights.duplicate(),
+		"next_light": next_light,
 		"tutorial_step": tutorial_step,
 		"tips_shown": tips_shown.duplicate(),
 		"island_ids": island_ids.duplicate(),
@@ -452,7 +472,7 @@ static func from_dict(d: Dictionary) -> GameData:
 	for t in Materials.TYPES:
 		g.inventory[t] = int(inv.get(t, 0))
 	var plant_inv: Dictionary = d.get("plants", {})
-	for id in Catalog.plant_ids():
+	for id in Catalog.plant_ids() + Catalog.light_ids():
 		g.plants[id] = int(plant_inv.get(id, 0))
 	var max_id := 0
 	for raw in d.get("events", []):
@@ -510,6 +530,12 @@ static func from_dict(d: Dictionary) -> GameData:
 		for species in seen:
 			if Catalog.is_animal(str(species)):
 				g.seen_animals[str(species)] = str(seen[species])
+	var seen_l = d.get("seen_lights", {})
+	if typeof(seen_l) == TYPE_DICTIONARY:
+		for light in seen_l:
+			if Catalog.is_light(str(light)):
+				g.seen_lights[str(light)] = str(seen_l[light])
+	g.next_light = maxi(0, int(d.get("next_light", 0)))
 	g.tutorial_step = clampi(int(d.get("tutorial_step", Tutorial.Step.DONE)), 0, Tutorial.Step.DONE)
 	for raw in d.get("custom_designs", []):
 		if typeof(raw) != TYPE_DICTIONARY or not Materials.is_valid(str(raw.get("base", ""))):

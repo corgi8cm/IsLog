@@ -24,7 +24,7 @@ const NEIGHBORS := [
 
 var id := 0
 var blocks: Dictionary = {}  # Vector3i -> 方塊種類
-var plants: Dictionary = {}  # Vector3i（植物所在的方塊）-> 植物 id
+var plants: Dictionary = {}  # Vector3i（植物或光源所在的方塊）-> 植物或光源 id
 ## 每隻動物：{id, species, pos: Vector3i（站在哪個方塊上）, arrived, confused_since}
 var animals: Array = []
 var next_animal_id := 1
@@ -104,11 +104,14 @@ func remove(p: Vector3i, inventory: Dictionary, plant_inventory: Dictionary = {}
 
 ## 種植不行的原因；可以種則回傳空字串。
 func plant_problem(p: Vector3i, plant_id: String, plant_inventory: Dictionary) -> String:
-	if not Catalog.is_plant(plant_id):
+	if not Catalog.is_decor(plant_id):
 		return "invalid"
 	if not blocks.has(p):
 		return "no_block"
-	if base_at(p) != Catalog.plant_base(plant_id):
+	if Catalog.is_light(plant_id):
+		if base_at(p) == Materials.WATER:
+			return "on_water"
+	elif base_at(p) != Catalog.plant_base(plant_id):
 		return "wrong_base"
 	if plants.has(p):
 		return "occupied"
@@ -424,7 +427,7 @@ static func from_dict(d: Dictionary) -> IslandData:
 			continue
 		var p := Vector3i(int(raw[0]), int(raw[1]), int(raw[2]))
 		var plant_id := str(raw[3])
-		if island.blocks.has(p) and Catalog.is_plant(plant_id):
+		if island.blocks.has(p) and Catalog.is_decor(plant_id):
 			island.plants[p] = plant_id
 	for raw in d.get("animals", []):
 		if typeof(raw) != TYPE_DICTIONARY:

@@ -217,6 +217,10 @@ func _event_reward_line(result: Dictionary) -> String:
 
 
 func _toast_result(lines: Array, result: Dictionary) -> void:
+	# 光源：完成的是重複事件本身，或最後一個子事件讓重複的母事件完成
+	var lit: Dictionary = result if result.get("light", "") != "" else result.get("parent", {})
+	if lit.get("light", "") != "":
+		lines.append("連續準時完成 %d 次！送你一個%s，到島上「光源」放放看" % [lit.streak, Catalog.light_name(lit.light)])
 	if result.get("visitor", "") != "":
 		var new_text := "（新發現！已記錄到圖鑑）" if Game.result_first_visit else ""
 		lines.append("%s來到你的島上了！%s" % [Catalog.animal_name(result.visitor), new_text])

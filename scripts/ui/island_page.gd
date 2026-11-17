@@ -4,6 +4,7 @@ extends Control
 const IslandView := preload("res://scripts/ui/island_view.gd")
 const REMOVE_MODE := "remove"
 const PLANT_MODE := "plant"
+const LIGHT_MODE := "light"
 const CUSTOM_MODE := "custom"
 
 var view: IslandView
@@ -18,6 +19,7 @@ var _custom_row: HBoxContainer
 var _custom_scroll: ScrollContainer
 var _custom_choice := ""
 var _plant_choice := ""
+var _light_choice := ""
 var _codex_button: Button
 ## 平常的操作介面（拍照模式時隱藏）。
 var _normal_ui: Array[Control] = []
@@ -122,7 +124,7 @@ func _ready() -> void:
 		b.pressed.connect(_select_tool.bind(t))
 		tools.add_child(b)
 		_tool_buttons[t] = b
-	for item in [[PLANT_MODE, "plant", "植物"], [CUSTOM_MODE, "brush", "自訂"], [REMOVE_MODE, "erase", "移除"]]:
+	for item in [[PLANT_MODE, "plant", "植物"], [LIGHT_MODE, "lamp", "光源"], [CUSTOM_MODE, "brush", "自訂"], [REMOVE_MODE, "erase", "移除"]]:
 		var b := UiKit.tile_button(group, UiKit.icon(item[1]), item[2])
 		b.text = item[2]
 		for key in ["font_color", "font_pressed_color", "font_hover_color", "font_hover_pressed_color"]:
@@ -249,6 +251,8 @@ func _on_cell_tapped(pos: Vector2) -> void:
 			_remove_at(_tapped_block(pos))
 		PLANT_MODE:
 			_plant_at(_tapped_block(pos))
+		LIGHT_MODE:
+			_light_at(_tapped_block(pos))
 		CUSTOM_MODE:
 			if _custom_choice == "":
 				_flash("先設計一個方塊")
@@ -293,9 +297,30 @@ func _plant_at(cell: Vector3i) -> void:
 			_flash("%s用完了" % pname)
 
 
+func _light_at(cell: Vector3i) -> void:
+	if _light_choice == "":
+		_flash("還沒有光源，重複事件連續準時完成 %d 次可以拿到" % Catalog.LIGHT_STREAK)
+		return
+	var lname := Catalog.light_name(_light_choice)
+	match Game.island.plant_problem(cell, _light_choice, Game.data.plants):
+		"":
+			Game.plant(cell, _light_choice)
+		"no_block":
+			_flash("點一個方塊來放%s" % lname)
+		"on_water":
+			_flash("%s不能放在水上" % lname)
+		"occupied":
+			_flash("這裡已經放了東西")
+		"covered":
+			_flash("上面被方塊蓋住了")
+		"no_plant":
+			_flash("%s用完了" % lname)
+
+
 func _remove_at(cell: Vector3i) -> void:
 	if Game.island.plants.has(cell):
-		_flash("收回 1 株%s" % Catalog.plant_name(Game.remove_plant(cell)))
+		var id := Game.remove_plant(cell)
+		_flash(("收回 1 個%s" if Catalog.is_light(id) else "收回 1 株%s") % Catalog.decor_name(id))
 		return
 	var removed := Game.remove_block(cell)
 	_flash("退回 1 個%s" % Materials.display_name(removed) if removed != "" else "這裡沒有方塊")
@@ -373,26 +398,36 @@ func _refresh_custom() -> void:
 	_custom_row.add_child(add)
 
 
+## 植物與光源共用下面這一排選擇列。
 func _refresh_plants() -> void:
-	_plant_scroll.visible = _tool == PLANT_MODE
+	var lights := _tool == LIGHT_MODE
+	_plant_scroll.visible = _tool == PLANT_MODE or lights
 	var owned := []
-	for id in Catalog.plant_ids():
+	for id in (Catalog.light_ids() if lights else Catalog.plant_ids()):
 		if int(Game.data.plants.get(id, 0)) > 0:
 			owned.append(id)
-	if not owned.has(_plant_choice):
+	if lights:
+		if not owned.has(_light_choice):
+			_light_choice = owned[0] if not owned.is_empty() else ""
+	elif not owned.has(_plant_choice):
 		_plant_choice = owned[0] if not owned.is_empty() else ""
 	for c in _plant_row.get_children():
 		c.queue_free()
 	if owned.is_empty():
-		_plant_row.add_child(UiKit.label("還沒有植物，完成事件有機會掉落", 24))
+		var empty := "還沒有光源，重複事件連續準時完成 %d 次送一盞" % Catalog.LIGHT_STREAK if lights else "還沒有植物，完成事件有機會掉落"
+		_plant_row.add_child(UiKit.label(empty, 24))
 		return
 	var group := ButtonGroup.new()
 	for id in owned:
-		var base := Catalog.plant_base(id)
-		var b := UiKit.tool_button(group, Materials.top_color(base).lightened(0.35))
+		var bg := Color("ffe2a8") if lights else Materials.top_color(Catalog.plant_base(id)).lightened(0.35)
+		var b := UiKit.tool_button(group, bg)
 		b.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 		b.custom_minimum_size = Vector2(0, 60)
-		b.text = "%s %d" % [Catalog.plant_name(id), Game.data.plants[id]]
-		b.button_pressed = id == _plant_choice
-		b.pressed.connect(func(): _plant_choice = id)
+		b.text = "%s %d" % [Catalog.decor_name(id), Game.data.plants[id]]
+		if lights:
+			b.button_pressed = id == _light_choice
+			b.pressed.connect(func(): _light_choice = id)
+		else:
+			b.button_pressed = id == _plant_choice
+			b.pressed.connect(func(): _plant_choice = id)
 		_plant_row.add_child(b)

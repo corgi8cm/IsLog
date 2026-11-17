@@ -11,6 +11,7 @@ const OUTLINE := 1.4
 ## 動物、植物畫得比方塊比例大一點，才看得清楚。
 const ANIMAL_SCALE := 1.5
 const PLANT_SCALE := 1.25
+const LIGHT_SCALE := 1.0
 
 var layer := 0:
 	set(v):
@@ -312,8 +313,12 @@ func _draw_item(it: Array, alpha: float) -> void:
 		1:
 			var rc: Vector2i = it[3]
 			var h := float(it[2]) + (0.85 if _rot_blocks.get(Vector3i(rc.x, rc.y, it[2])) == Materials.WATER else 1.0)
-			_scaled(Iso.to_screen(rc.x + 0.5, rc.y + 0.5, h), PLANT_SCALE)
-			_painter.plant(it[4], Vector2.ZERO)
+			if Catalog.is_light(it[4]):
+				_scaled(Iso.to_screen(rc.x + 0.5, rc.y + 0.5, h), LIGHT_SCALE)
+				_painter.light(it[4], Vector2.ZERO, _night >= 0.5, _time)
+			else:
+				_scaled(Iso.to_screen(rc.x + 0.5, rc.y + 0.5, h), PLANT_SCALE)
+				_painter.plant(it[4], Vector2.ZERO)
 			draw_set_transform_matrix(_base)
 		2:
 			var rp: Vector2 = it[3]
@@ -542,11 +547,36 @@ func _draw_custom_cube(t: Array, b: Array, type: String, alpha: float, show_top:
 
 # --- 夜晚：螢火蟲與睡覺的動物 -------------------------------------------------
 
+## 光源的光：地上一圈暖色光，加上燈或火本身的光暈（會微微閃爍）。
+func _draw_light_glow(k: float) -> void:
+	var island := Game.island
+	for cell in island.plants:
+		var id: String = island.plants[cell]
+		if not Catalog.is_light(id) or (cell.z > layer and not photo_mode):
+			continue
+		var g: Array = IsoPainter.LIGHT_GLOW[id]
+		var rc := Iso.rotate_cell(Vector2i(cell.x, cell.y), rotation_step)
+		var at := Iso.to_screen(rc.x + 0.5, rc.y + 0.5, cell.z + 1)
+		var flicker := 1.0 if id == "lamp" or id == "lantern" else 0.88 + 0.12 * sin(_time * 7.0 + cell.x)
+		var col: Color = g[2]
+		var ground: float = g[3] * LIGHT_SCALE
+		draw_set_transform_matrix(_base * Transform2D(0.0, Vector2(1.0, 0.5), 0.0, at))
+		for i in 7:
+			var f := 1.0 - i / 7.0
+			draw_circle(Vector2.ZERO, ground * (0.25 + f), Color(col, (0.045 + 0.012 * i) * k * flicker))
+		draw_set_transform_matrix(_base)
+		var head: Vector2 = at + g[0] * LIGHT_SCALE
+		for i in 6:
+			var f := 1.0 - i / 6.0
+			draw_circle(head, g[1] * LIGHT_SCALE * (0.3 + f), Color(col, (0.07 + 0.025 * i) * k * flicker))
+
+
 func _draw_night_fx() -> void:
 	if _night < 0.5:
 		return
 	var k := (_night - 0.5) * 2.0
 	var island := Game.island
+	_draw_light_glow(k)
 	for cell in island.plants:
 		if cell.z > layer and not photo_mode:
 			continue

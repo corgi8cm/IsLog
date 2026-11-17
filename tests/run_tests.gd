@@ -1163,3 +1163,56 @@ func _remove_dir(path: String) -> void:
 	for f in d.get_files():
 		d.remove(f)
 	DirAccess.remove_absolute(path)
+
+
+func test_lights_from_on_time_streak() -> void:
+	var g := GameData.new()
+	var rng := _rng()
+	var ev := g.add_event("晨跑", 0, [], {"due_date": "2026-11-16", "repeat": {"kind": "daily"}})
+	var got := []
+	var day := "2026-11-16"
+	for i in 12:
+		var r := g.complete_event(ev.id, day, 0, rng)
+		if r.light != "":
+			got.append([r.streak, r.light])
+		ev = g.find_event(r.next)
+		day = Schedule.add_days(day, 1)
+	check(got.size() == 4, "連續 12 次準時完成送 4 個光源")
+	check(got.map(func(x): return x[0]) == [3, 6, 9, 12], "每滿 3 次送一個")
+	check(got.map(func(x): return x[1]) == Catalog.light_ids(), "四種光源依序輪流送")
+	for id in Catalog.light_ids():
+		check(g.plants[id] == 1, "光源進背包：%s" % id)
+		check(g.seen_lights.has(id), "圖鑑記錄拿到過：%s" % id)
+	# 遲到一次就重新算，不送
+	var r_late := g.complete_event(ev.id, Schedule.add_days(day, 5), 0, rng)
+	check(r_late.light == "" and r_late.streak == 1, "遲到完成不送光源")
+	var plain := g.add_event("一次性", 0)
+	check(g.complete_event(plain.id, day, 0, rng).light == "", "不重複的事件不送光源")
+	# 存檔讀回
+	var g2 := GameData.from_dict(JSON.parse_string(JSON.stringify(g.to_dict())))
+	check(g2.plants["campfire"] == 1 and g2.seen_lights == g.seen_lights and g2.next_light == 4, "光源存檔讀回")
+
+
+func test_place_lights() -> void:
+	var island := IslandData.new()
+	var inv := {Materials.DIRT: 2, Materials.WATER: 1, Materials.STONE: 1}
+	var dirt := Vector3i(1, 1, 0)
+	var water := Vector3i(2, 1, 0)
+	var stone := Vector3i(3, 1, 0)
+	island.place(dirt, Materials.DIRT, inv)
+	island.place(water, Materials.WATER, inv)
+	island.place(stone, Materials.STONE, inv)
+	var pinv := Catalog.empty_plant_inventory()
+	pinv["lamp"] = 2
+	pinv["flower"] = 1
+	check(island.plant_problem(water, "lamp", pinv) == "on_water", "水上不能放光源")
+	check(island.plant(dirt, "lamp", pinv) and island.plant(stone, "lamp", pinv), "土和石上都能放光源")
+	check(pinv["lamp"] == 0, "放光源扣背包")
+	check(island.plant_problem(dirt, "flower", pinv) == "occupied", "放了光源的格子不能再種花")
+	check(island.place_problem(dirt + Vector3i(0, 0, 1), Materials.DIRT, inv) == "plant_below", "光源上面不能蓋方塊")
+	check(island.plant_problem(stone, "torch", pinv) == "occupied", "一格只能放一個")
+	var i2 := IslandData.from_dict(JSON.parse_string(JSON.stringify(island.to_dict())))
+	check(i2.plants.get(dirt, "") == "lamp", "光源存檔讀回")
+	check(island.remove_plant(dirt, pinv) == "lamp" and pinv["lamp"] == 1, "收回光源退回背包")
+	island.remove(stone, inv, pinv)
+	check(pinv["lamp"] == 2, "移除方塊時上面的光源一起退回")

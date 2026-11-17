@@ -18,6 +18,16 @@ const PLANTS := {
 	"palm": {"name": "椰子樹", "base": Materials.SAND},
 }
 
+## 光源：像植物一樣放在方塊頂面（一格一個），晚上會亮。水上不能放。
+## 重複事件連續準時完成 LIGHT_STREAK 次送一盞，依序輪流給。
+const LIGHTS := {
+	"lamp": {"name": "路燈"},
+	"torch": {"name": "火把"},
+	"lantern": {"name": "燈籠"},
+	"campfire": {"name": "營火"},
+}
+const LIGHT_STREAK := 3
+
 ## 動物：住在哪一種方塊上，以及棲地條件（「附近」= 周圍 8 格、高度差一層以內）。
 ## condition：[種類, 參數]；空陣列為無條件的基本動物。hint：圖鑑上的提示。
 const ANIMALS := {
@@ -64,6 +74,27 @@ static func animal_ids() -> Array:
 
 static func is_plant(id: String) -> bool:
 	return PLANTS.has(id)
+
+
+static func light_ids() -> Array:
+	return LIGHTS.keys()
+
+
+static func is_light(id: String) -> bool:
+	return LIGHTS.has(id)
+
+
+static func light_name(id: String) -> String:
+	return LIGHTS[id].name if LIGHTS.has(id) else "?"
+
+
+## 可以放在方塊頂面的東西：植物或光源。
+static func is_decor(id: String) -> bool:
+	return PLANTS.has(id) or LIGHTS.has(id)
+
+
+static func decor_name(id: String) -> String:
+	return light_name(id) if LIGHTS.has(id) else plant_name(id)
 
 
 static func is_animal(id: String) -> bool:
@@ -124,5 +155,7 @@ static func animal_hint(id: String) -> String:
 static func empty_plant_inventory() -> Dictionary:
 	var inv := {}
 	for id in PLANTS:
+		inv[id] = 0
+	for id in LIGHTS:
 		inv[id] = 0
 	return inv

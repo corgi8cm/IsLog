@@ -57,6 +57,12 @@ func _run() -> void:
 	for p in planting:
 		game.data.plants[planting[p]] += 1
 		game.plant(p, planting[p])
+	# 光源
+	var light_cells := {Vector3i(2, 3, 0): "lamp", Vector3i(6, 3, 0): "torch", Vector3i(3, 6, 0): "lantern", Vector3i(7, 7, 0): "campfire"}
+	for p in light_cells:
+		game.data.plants[light_cells[p]] += 1
+		game.data.seen_lights[light_cells[p]] = game.today()
+		game.plant(p, light_cells[p])
 	for i in 9:
 		var v: String = game.island.try_visit(0.0, game.now(), game.rng, game.data.seen_animals)
 		if v != "":
@@ -174,6 +180,16 @@ func _run() -> void:
 	main.call("_show_page", 1)
 	_press(main, "圖鑑")
 	await _shot(out_dir, "encyclopedia_night.png")
+	# 圖鑑裡的「光源」分頁（工具列也有一個「光源」，取最後開的那個）
+	var tab_buttons := main.find_children("*", "Button", true, false).filter(func(x): return x.text == "光源" and x.toggle_mode and x.is_visible_in_tree())
+	tab_buttons.back().button_pressed = true
+	await _shot(out_dir, "encyclopedia_lights_night.png")
+	main.get_child(-1).queue_free()
+	_press(main, "知道了")
+	for id in Catalog.light_ids():
+		game.data.plants[id] += 2
+	page.call("_select_tool", "light")
+	await _shot(out_dir, "island_lights_night.png")
 	_remove_dir("user://screenshot_demo")
 	quit()
 

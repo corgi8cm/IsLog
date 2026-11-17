@@ -319,7 +319,7 @@ func island_summaries() -> Array:
 	for island_id in data.island_ids:
 		var isl: IslandData = island if island_id == island.id else load_island(island_id)
 		out.append({"id": island_id, "name": isl.display_name(), "blocks": isl.block_count(),
-			"plants": isl.plants.size(), "animals": isl.animals.size(), "current": island_id == island.id})
+			"plants": isl.plants.values().filter(func(v): return Catalog.is_plant(v)).size(), "animals": isl.animals.size(), "current": island_id == island.id})
 	return out
 
 

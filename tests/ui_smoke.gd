@@ -75,6 +75,17 @@ func _run() -> void:
 	check(not game.island.plants.has(cell) and game.island.has_block(cell), "移除先收回植物，方塊還在")
 	check(game.data.plants["flower"] == 1, "植物退回背包")
 
+	# 光源模式：點方塊頂面放路燈；移除模式收回
+	game.data.plants["lamp"] = 1
+	page.call("_select_tool", "light")
+	await _frames()
+	await _click(top_face)
+	check(game.island.plants.get(cell, "") == "lamp", "點方塊放路燈")
+	check(game.data.plants["lamp"] == 0, "放路燈扣背包")
+	page.call("_select_tool", "remove")
+	await _click(top_face)
+	check(not game.island.plants.has(cell) and game.data.plants["lamp"] == 1, "移除收回路燈")
+
 	# 事件頁：展開子事件、新增、完成
 	main.call("_show_page", 0)
 	var events_page = main.get("_pages")[0]

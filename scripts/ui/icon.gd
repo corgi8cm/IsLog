@@ -82,6 +82,14 @@ static func draw_glyph(ci: CanvasItem, what: String, col: Color) -> void:
 			ci.draw_line(Vector2(0, 14), Vector2(0, -2), col, 3, true)
 			ci.draw_colored_polygon(PackedVector2Array([Vector2(0, 0), Vector2(-12, -6), Vector2(-4, -14)]), col)
 			ci.draw_colored_polygon(PackedVector2Array([Vector2(0, -4), Vector2(12, -12), Vector2(6, -2)]), col)
+		"lamp":
+			ci.draw_line(Vector2(0, 16), Vector2(0, -2), col, 3, true)
+			ci.draw_line(Vector2(-6, 16), Vector2(6, 16), col, 3, true)
+			ci.draw_polyline(PackedVector2Array([Vector2(-6, -2), Vector2(6, -2), Vector2(5, -11), Vector2(-5, -11), Vector2(-6, -2)]), col, 2.5, true)
+			ci.draw_colored_polygon(PackedVector2Array([Vector2(-8, -11), Vector2(8, -11), Vector2(0, -17)]), col)
+			for a in [-0.5, 0.0, 0.5]:
+				var d := Vector2(sin(a), -cos(a) * 0.4)
+				ci.draw_line(Vector2(0, -6) + Vector2(d.x * 11, 0), Vector2(0, -6) + Vector2(d.x * 16, 0), col, 2, true)
 		"brush":
 			ci.draw_line(Vector2(-10, 12), Vector2(8, -10), col, 4, true)
 			ci.draw_circle(Vector2(-11, 13), 4, col)
