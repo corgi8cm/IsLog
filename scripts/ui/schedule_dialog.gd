@@ -3,6 +3,11 @@ extends RefCounted
 ## 設定事件的日期、時間與重複（像日曆 App 那樣，但都用按鈕，不用打字）。
 
 
+const TIME_PRESETS := [["早上 8:00", 480], ["中午 12:00", 720], ["晚上 8:00", 1200]]
+## 按「自訂時間」時，沒有選過時間就從這裡開始撥。
+const CUSTOM_START := 9 * 60
+
+
 ## initial：{due_date, due_time, repeat, remind}；on_done(when) 在按「確定」時呼叫。
 static func open(host: Control, title: String, initial: Dictionary, today: String, on_done: Callable) -> void:
 	var parts := UiKit.open_modal(host, title)
@@ -19,6 +24,8 @@ static func open(host: Control, title: String, initial: Dictionary, today: Strin
 		"every": 2,
 		"days": [],
 	}
+	# 不是快速選項的時間：一打開就顯示滾輪
+	state.custom = state.time >= 0 and not TIME_PRESETS.any(func(p): return p[1] == state.time)
 	var rule: Dictionary = state.repeat
 	if rule.get("kind", "") == Schedule.EVERY:
 		state.every = int(rule.every)
@@ -90,21 +97,20 @@ static func _build(content: VBoxContainer, state: Dictionary, today: String) -> 
 		var trow := _chips(content)
 		_chip(trow, "不指定", state.time < 0, func():
 			state.time = -1
+			state.custom = false
 			redo.call())
-		for preset in [["早上 8:00", 480], ["中午 12:00", 720], ["晚上 8:00", 1200]]:
-			_chip(trow, preset[0], state.time == preset[1], func():
+		for preset in TIME_PRESETS:
+			_chip(trow, preset[0], state.time == preset[1] and not state.custom, func():
 				state.time = preset[1]
+				state.custom = false
 				redo.call())
-		if state.time >= 0:
-			var hm := HBoxContainer.new()
-			hm.add_theme_constant_override("separation", 12)
-			content.add_child(hm)
-			_stepper(hm, "%02d 時" % (state.time / 60), func(d: int):
-				state.time = posmod(state.time + d * 60, 1440)
-				redo.call())
-			_stepper(hm, "%02d 分" % (state.time % 60), func(d: int):
-				state.time = (state.time / 60) * 60 + posmod(state.time % 60 + d * 5, 60)
-				redo.call())
+		_chip(trow, "自訂時間", state.custom, func():
+			if state.time < 0:
+				state.time = CUSTOM_START
+			state.custom = true
+			redo.call())
+		if state.custom:
+			_time_wheel(content, state)
 
 		# 重複
 		content.add_child(UiKit.label("重複", 24, "Muted"))
@@ -150,6 +156,40 @@ static func _build(content: VBoxContainer, state: Dictionary, today: String) -> 
 				redo.call())
 		if state.remind >= 0 and state.time < 0:
 			content.add_child(UiKit.label("沒指定時間的事件，在當天早上 9 點提醒。", 21, "Muted"))
+
+
+## 上午／下午 + 時、分滾輪。撥動時只改 state.time，不重建畫面（滾輪才不會被換掉）。
+static func _time_wheel(content: VBoxContainer, state: Dictionary) -> void:
+	var pm: bool = state.time >= 720
+	var seg := HBoxContainer.new()
+	seg.alignment = BoxContainer.ALIGNMENT_CENTER
+	seg.add_theme_constant_override("separation", 0)
+	content.add_child(seg)
+	var picker := TimeWheel.Picker.new(posmod(state.time / 60 - 1, 12) + 1, state.time % 60)
+	var apply := func(is_pm: bool, h12: int, m: int):
+		state.time = ((h12 % 12) + (12 if is_pm else 0)) * 60 + m
+	var group := ButtonGroup.new()
+	var halves := []
+	for i in 2:
+		var b := Button.new()
+		b.text = "上午" if i == 0 else "下午"
+		b.toggle_mode = true
+		b.button_group = group
+		b.focus_mode = Control.FOCUS_NONE
+		b.custom_minimum_size = Vector2(170, 60)
+		b.add_theme_font_size_override("font_size", 26)
+		b.button_pressed = (i == 1) == pm
+		b.theme_type_variation = "AccentButton" if b.button_pressed else "FlatButton"
+		var is_pm := i == 1
+		b.toggled.connect(func(on: bool):
+			b.theme_type_variation = "AccentButton" if on else "FlatButton"
+			if on:
+				apply.call(is_pm, picker.hour.value(), picker.minute.value()))
+		seg.add_child(b)
+		halves.append(b)
+	picker.picked.connect(func(h12: int, m: int):
+		apply.call(halves[1].button_pressed, h12, m))
+	content.add_child(picker)
 
 
 static func _chips(parent: Control) -> HFlowContainer:

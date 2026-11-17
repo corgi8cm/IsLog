@@ -109,6 +109,28 @@ func _run() -> void:
 	check(ev.done_date != "", "兩個子事件完成後母事件自動完成")
 	check(_find(events_page, func(n): return n is Label and n.text.begins_with("整理房間（子事件")) != null, "出現在今天完成")
 
+	# 設定時間：自訂時間用上午／下午與滾輪
+	_button(events_page, "設定時間").pressed.emit()
+	await _frames()
+	var dialog: Node = main.get_child(-1)
+	_button(dialog, "今天").pressed.emit()
+	await _frames()
+	_button(dialog, "自訂時間").pressed.emit()
+	await _frames()
+	var wheels := dialog.find_children("*", "TimeWheel", true, false)
+	check(wheels.size() == 2, "自訂時間顯示時、分兩個滾輪")
+	if wheels.size() == 2:
+		check(wheels[0].value() == 9 and wheels[1].value() == 0, "從上午 9:00 開始撥")
+		wheels[0].step(1)
+		wheels[1].step(-25)
+		_button(dialog, "下午").button_pressed = true
+		await _frames()
+		_button(dialog, "確定").pressed.emit()
+		await _frames()
+		var when: Dictionary = events_page.get("_pending_when")
+		check(int(when.get("due_time", -1)) == 22 * 60 + 35, "撥到下午 10:35")
+	events_page.set("_pending_when", {})
+
 	# 拍照模式：隱藏介面與格線，返回後恢復（不測儲存，避免寫進電腦的圖片資料夾）
 	main.call("_show_page", 1)
 	page.call("set_photo_mode", true)
